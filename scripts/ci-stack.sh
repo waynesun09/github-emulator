@@ -61,7 +61,13 @@ UPSTREAM_VERSION="${CI_STACK_UPSTREAM_RUNNER_VERSION:-2.338.2}"
 TLS="${CI_STACK_TLS:-0}"
 SCHEME=http
 [ "$TLS" = 1 ] && SCHEME=https
-BASE="$SCHEME://$HOST:$PORT"
+# No default port in the URL, as GitHub writes its own: the OIDC issuer is
+# compared exactly, and https://ghemu.localhost:443 is not
+# https://ghemu.localhost.
+case "$SCHEME:$PORT" in
+  http:80 | https:443) BASE="$SCHEME://$HOST" ;;
+  *) BASE="$SCHEME://$HOST:$PORT" ;;
+esac
 # Readiness is checked on loopback: CI_STACK_HOST may name an address this
 # machine cannot reach itself (one inside a VM), and only clients use it.
 LOCAL="$SCHEME://127.0.0.1:$PORT"

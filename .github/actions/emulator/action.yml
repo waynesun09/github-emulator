@@ -106,6 +106,10 @@ runs:
         scheme=http
         [ "$CI_STACK_TLS" = 1 ] && scheme=https
         url="$scheme://$CI_STACK_HOST:$CI_STACK_PORT"
+        # As ci-stack.sh writes it: no default port.
+        case "$scheme:$CI_STACK_PORT" in
+          http:80 | https:443) url="$scheme://$CI_STACK_HOST" ;;
+        esac
         {
           echo "url=$url"
           echo "api-url=$url/api/v3"
