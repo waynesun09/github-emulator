@@ -41,6 +41,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 17 | fix-close-issue-state-reason | 197ee90 | GraphQL `stateReason` as an enum on close and on the issue |
 | 18 | fix-collaborator-permission-none | a49e162 | An org member with no role on a public org repo has read permission, not none |
 | 19 | fix-review-own-pull-request | 6cc9aa3 | The PR author's APPROVE or REQUEST_CHANGES gets 422; review create returns 200; POST submit is accepted |
+| 20 | fix-runner-job-logs | f9b957b | Upstream runner: logs and timeline go to the token's job, not the plan's; created logs carry a path; timeline updates are answered as `{count, value}` |
 
 Nothing is pending. Every fix branch on the fork is listed above, except bt-f4-suite-timing, which is measurement only.
 
