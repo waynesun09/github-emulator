@@ -91,6 +91,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m venv /tmp/emu-venv && /tmp/emu-venv/bin/pip install -q -r requirements.txt
+      # actions/runner drops the port from some emulator URLs and dials :80
+      # (registration fails with "Connection refused (127.0.0.1:80)"), so
+      # serve the emulator itself on 80 instead of adding a proxy process.
+      - name: Serve on port 80 for the upstream runner
+        if: matrix.runner == 'upstream'
+        run: |
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+          echo "CI_STACK_PORT=80" >> "$GITHUB_ENV"
+          echo "EMU=http://127.0.0.1:80" >> "$GITHUB_ENV"
       - name: Start the stack
         run: |
           start=$(date +%s.%N)
