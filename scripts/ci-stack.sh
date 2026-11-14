@@ -17,6 +17,9 @@
 #                   name that resolves to this machine, e.g. <ip>.nip.io.
 #   CI_STACK_BIND   address uvicorn listens on (default 127.0.0.1; use
 #                   0.0.0.0 with a non-loopback CI_STACK_HOST)
+#   CI_STACK_RUNNERS  runner processes, i.e. jobs that run at once (default 1)
+#   CI_STACK_RUNNER_KIND  python (src/runners/emulator/runner.py, default) or
+#                   upstream (the real actions/runner, Linux x64)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,6 +29,9 @@ PY="${CI_STACK_PYTHON:-python3}"
 LABELS="${CI_STACK_RUNNER_LABELS:-self-hosted,linux,ubuntu-latest,ubuntu-24.04}"
 HOST="${CI_STACK_HOST:-127.0.0.1}"
 BIND="${CI_STACK_BIND:-127.0.0.1}"
+RUNNERS="${CI_STACK_RUNNERS:-1}"
+KIND="${CI_STACK_RUNNER_KIND:-python}"
+UPSTREAM_VERSION="${CI_STACK_UPSTREAM_RUNNER_VERSION:-2.317.0}"
 BASE="http://$HOST:$PORT"
 ADMIN_TOKEN="${GITHUB_EMULATOR_DEFAULT_ADMIN_TOKEN:-ghp_admin_default_token}"
 
@@ -51,25 +57,63 @@ start() {
   done
   curl -sf "$BASE/api/v3" >/dev/null || { tail -50 "$DIR/emulator.log"; exit 1; }
 
+  # One runner executes one job at a time, so job concurrency is the number
+  # of runner processes. Each gets its own work directory.
+  for i in $(seq 1 "$RUNNERS"); do
+    case "$KIND" in
+      python) start_python_runner "$i" ;;
+      upstream) start_upstream_runner "$i" ;;
+      *) echo "CI_STACK_RUNNER_KIND must be python or upstream, got $KIND" >&2; exit 2 ;;
+    esac
+  done
+  echo "emulator $BASE (pid $(cat "$DIR/emulator.pid")), $RUNNERS $KIND runner(s)"
+}
+
+start_python_runner() {
+  local i="$1"
   GITHUB_EMULATOR_URL="$BASE" \
   GITHUB_EMULATOR_TOKEN="$ADMIN_TOKEN" \
   RUNNER_SCOPE=site \
-  RUNNER_NAME="ci-runner-1" \
+  RUNNER_NAME="ci-runner-$i" \
   RUNNER_LABELS="$LABELS" \
-  RUNNER_WORKDIR="$DIR/runner/work" \
+  RUNNER_WORKDIR="$DIR/runner-$i/work" \
     nohup "$PY" "$ROOT/src/runners/emulator/runner.py" \
-      >"$DIR/runner.log" 2>&1 &
-  echo $! >"$DIR/runner.pid"
-  echo "emulator $BASE (pid $(cat "$DIR/emulator.pid")), runner pid $(cat "$DIR/runner.pid")"
+      >"$DIR/runner-$i.log" 2>&1 &
+  echo $! >"$DIR/runner-$i.pid"
+}
+
+# The real actions/runner, registered at enterprise scope the way
+# src/runners/upstream/entrypoint.sh does it. Linux x64 only.
+start_upstream_runner() {
+  local i="$1" home="$DIR/runner-$i" enterprise="${CI_STACK_ENTERPRISE:-breadboard}"
+  local tarball="$DIR/actions-runner-$UPSTREAM_VERSION.tar.gz"
+  if [ ! -f "$tarball" ]; then
+    curl -fsSL -o "$tarball" \
+      "https://github.com/actions/runner/releases/download/v$UPSTREAM_VERSION/actions-runner-linux-x64-$UPSTREAM_VERSION.tar.gz"
+  fi
+  mkdir -p "$home"
+  tar -xzf "$tarball" -C "$home"
+  local reg
+  reg="$(curl -sf -X POST -H "Authorization: token $ADMIN_TOKEN" \
+    "$BASE/api/v3/enterprises/$enterprise/actions/runners/registration-token" | jq -r .token)"
+  (cd "$home" && ./config.sh --unattended --replace \
+    --url "$BASE/enterprises/$enterprise" --token "$reg" \
+    --name "ci-runner-$i" --labels "$LABELS" --work _work) >"$DIR/runner-$i.log" 2>&1
+  (cd "$home" && nohup ./run.sh >>"$DIR/runner-$i.log" 2>&1 &
+   echo $! >"$DIR/runner-$i.pid")
+}
+
+pidfiles() {
+  ls "$DIR"/runner-*.pid "$DIR/emulator.pid" 2>/dev/null || true
 }
 
 stop() {
-  for name in runner emulator; do
-    if [ -f "$DIR/$name.pid" ]; then
-      kill "$(cat "$DIR/$name.pid")" 2>/dev/null || true
-      rm -f "$DIR/$name.pid"
-    fi
+  for f in $(pidfiles); do
+    kill "$(cat "$f")" 2>/dev/null || true
+    rm -f "$f"
   done
+  # run.sh leaves Runner.Listener and Runner.Worker behind.
+  pkill -f "$DIR/runner-" 2>/dev/null || true
 }
 
 # Print each process's peak resident memory (VmHWM) and CPU seconds so far,
@@ -78,12 +122,16 @@ stop() {
 stats() {
   local ticks
   ticks="$(getconf CLK_TCK)"
-  for name in emulator runner; do
-    local pid
-    pid="$(cat "$DIR/$name.pid")"
+  for f in $(pidfiles); do
+    local pid name
+    pid="$(cat "$f")"
+    name="$(basename "$f" .pid)"
     awk -v n="$name" '/^VmHWM/ {printf "%s peak_rss_mib=%.0f ", n, $2/1024}' "/proc/$pid/status"
     awk -v t="$ticks" '{printf "cpu_s=%.1f\n", ($14+$15)/t}' "/proc/$pid/stat"
   done
+  # The upstream runner's pid file names run.sh; its .NET listener and worker
+  # are children. Report their current resident memory as a group.
+  ps -eo rss=,args= | awk -v d="$DIR/runner-" 'index($0, d) {s += $1} END {printf "all runner processes now rss_mib=%.0f\n", s/1024}'
 }
 
 case "${1:-}" in

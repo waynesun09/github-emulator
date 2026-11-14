@@ -72,3 +72,44 @@ jobs:
         env:
           CI_STACK_DIR: /tmp/ci-stack
         run: scripts/ci-stack.sh stop
+
+  # Which workflow features each runner executes. Informational: a feature
+  # failing here is a finding, not a broken build.
+  capabilities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [python, upstream]
+    env:
+      CI_STACK_PYTHON: /tmp/emu-venv/bin/python
+      CI_STACK_DIR: /tmp/ci-stack
+      CI_STACK_RUNNERS: "2"
+      CI_STACK_RUNNER_KIND: ${{ matrix.runner }}
+      PROBE_WAIT_SECONDS: "180"
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m venv /tmp/emu-venv && /tmp/emu-venv/bin/pip install -q -r requirements.txt
+      - name: Start the stack
+        run: |
+          start=$(date +%s.%N)
+          scripts/ci-stack.sh start
+          echo "start_seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$GITHUB_ENV"
+      - name: Probe
+        run: |
+          {
+            echo "### ${{ matrix.runner }} runner x2 (stack start ${start_seconds}s)"
+            echo
+            scripts/ci-capability-probe.sh
+            echo
+            echo '```'
+            scripts/ci-stack.sh stats
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Stack logs
+        if: always()
+        run: tail -n 80 /tmp/ci-stack/*.log
+      - name: Stop the stack
+        if: always()
+        run: scripts/ci-stack.sh stop
