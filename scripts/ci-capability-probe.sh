@@ -199,25 +199,33 @@ EOF
 git_push_tree "$REPO" "$S"
 
 FEATURES=(composite reusable emuhost githubcom container oidc artifacts concurrency)
-for f in "${FEATURES[@]}"; do
-  api POST "/repos/$ORG/$REPO/actions/workflows/$f.yml/dispatches" \
-    -H 'Content-Type: application/json' -d '{"ref":"main"}' -o /dev/null
-done
 
-# Map each workflow file to its run id.
-deadline=$(( $(date +%s) + WAIT_SECONDS ))
-while :; do
-  runs="$(api GET "/repos/$ORG/$REPO/actions/runs?per_page=50")"
-  pending=0
-  for f in "${FEATURES[@]}"; do
-    st="$(jq -r --arg p ".github/workflows/$f.yml" \
-      '[.workflow_runs[] | select(.path == $p)][0].status // "missing"' <<<"$runs")"
-    [ "$st" = completed ] || pending=$((pending + 1))
+# Dispatch the named workflows and wait until they complete or time out.
+dispatch_and_wait() {
+  local f st pending deadline
+  for f in "$@"; do
+    api POST "/repos/$ORG/$REPO/actions/workflows/$f.yml/dispatches" \
+      -H 'Content-Type: application/json' -d '{"ref":"main"}' -o /dev/null
   done
-  [ "$pending" -eq 0 ] && break
-  [ "$(date +%s)" -ge "$deadline" ] && break
-  sleep 2
-done
+  deadline=$(( $(date +%s) + WAIT_SECONDS ))
+  while :; do
+    runs="$(api GET "/repos/$ORG/$REPO/actions/runs?per_page=50")"
+    pending=0
+    for f in "$@"; do
+      st="$(jq -r --arg p ".github/workflows/$f.yml" \
+        '[.workflow_runs[] | select(.path == $p)][0].status // "missing"' <<<"$runs")"
+      [ "$st" = completed ] || pending=$((pending + 1))
+    done
+    [ "$pending" -eq 0 ] && break
+    [ "$(date +%s)" -ge "$deadline" ] && break
+    sleep 2
+  done
+}
+
+# Everything but the concurrency check runs together. The concurrency check
+# runs alone afterwards, so a busy runner cannot pass for a serial scheduler.
+dispatch_and_wait "${FEATURES[@]:0:${#FEATURES[@]}-1}"
+dispatch_and_wait concurrency
 
 row() { echo "| $1 | $2 | $3 |"; }
 {
