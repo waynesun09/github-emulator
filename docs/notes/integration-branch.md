@@ -33,12 +33,12 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 9 | bt-f3-team-memberships | d7c4012 | Team membership endpoints |
 | 10 | bt-f3-oidc-claims | 8a5556e | OIDC `repository_owner_id` and `/.well-known/jwks` |
 | 11 | bt-f3-localhost-dns | 6990963 | `CI_STACK_LOCALHOST_DNS`. The status script reports d079509 as missing because its pick, 75138e2, carries different context lines; the change itself is in. |
+| 12 | fix-runner-job-double-claim | 1073c32 | Atomic job claim on both runner paths; a lost job request answers with a 404 that the runner stops on |
 
 ## Pending
 
 These branches are not on the fork yet:
 - fix-contents-sha-precondition
-- fix-runner-job-double-claim
 - fix-workflow-lookup-resync-per-request
 - fix-compare-merge-base
 - fix-closed-by-pull-requests-references
