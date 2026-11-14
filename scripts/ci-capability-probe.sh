@@ -235,6 +235,12 @@ row() { echo "| $1 | $2 | $3 |"; }
     for jid in $(jq -r '.jobs[].id' <<<"$jobs"); do
       logs+="$(api GET "/repos/$ORG/$REPO/actions/jobs/$jid/logs" -L)"$'\n'
     done
+    if [ -n "${PROBE_LOG_DIR:-}" ]; then
+      mkdir -p "$PROBE_LOG_DIR"
+      printf '%s\n' "$logs" >"$PROBE_LOG_DIR/$f.log"
+      jq '[.jobs[] | {name, runner_name, status, conclusion, started_at, completed_at}]' \
+        <<<"$jobs" >"$PROBE_LOG_DIR/$f.jobs.json"
+    fi
     if [ "$status" != completed ]; then
       row "$f" "fails" "run $id still $status after ${WAIT_SECONDS}s"
       continue
@@ -252,7 +258,8 @@ row() { echo "| $1 | $2 | $3 |"; }
         row "$f" "works" "run $id success${extra:+, $extra}"
       fi
     else
-      why="$(grep -m1 -E 'Unsupported action|Error|error|not supported|failed' <<<"$logs" | tr '|' '/' | cut -c1-160)"
+      why="$(grep -v 'Process completed with exit code' <<<"$logs" |
+        grep -m1 -E 'Unsupported action|Error|error|not supported|failed' | tr '|' '/' | cut -c1-160)"
       row "$f" "fails" "run $id $conclusion: ${why:-no marker in log}"
     fi
   done

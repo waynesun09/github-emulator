@@ -88,6 +88,7 @@ jobs:
       CI_STACK_RUNNERS: "2"
       CI_STACK_RUNNER_KIND: ${{ matrix.runner }}
       PROBE_WAIT_SECONDS: "180"
+      PROBE_LOG_DIR: /tmp/ci-stack/probe-logs
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m venv /tmp/emu-venv && /tmp/emu-venv/bin/pip install -q -r requirements.txt
@@ -116,9 +117,15 @@ jobs:
             scripts/ci-stack.sh stats
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Stack logs
-        if: always()
-        run: tail -n 80 /tmp/ci-stack/*.log
       - name: Stop the stack
         if: always()
         run: scripts/ci-stack.sh stop
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capabilities-${{ matrix.runner }}
+          path: |
+            /tmp/ci-stack/*.log
+            /tmp/ci-stack/probe-logs
+            /tmp/ci-stack/runner-*/_diag/*.log
