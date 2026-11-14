@@ -1334,7 +1334,8 @@ class RunnerClient:
         timed_out = False
         try:
             shell_name = str(step.get("shell") or "bash")
-            executable = "/bin/bash" if shell_name.split()[0] == "bash" else None
+            # Like actions/runner: bash from PATH, so a newer bash wins over /bin/bash.
+            executable = (shutil.which("bash", path=env.get("PATH")) or "/bin/bash") if shell_name.split()[0] == "bash" else None
             proc = subprocess.Popen(
                 command,
                 shell=True,
