@@ -13,6 +13,43 @@ permissions:
   contents: read
 
 jobs:
+  # The emulator's own suite, sharded by file across machines: it shares
+  # DATA_DIR and builds a database per test, so it cannot run in parallel
+  # inside one process.
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    name: tests (${{ matrix.shard }}/8)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+      - name: Install
+        run: uv venv -q --python 3.12 && uv pip install -q -e ".[dev]"
+      - name: Test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          mapfile -t files < <(scripts/ci-test-shard.sh "$SHARD" 8)
+          echo "${#files[@]} files"
+          uv run --no-sync pytest -q -p no:cacheprovider -W ignore::DeprecationWarning "${files[@]}"
+
+  # Which fix branches on the fork this ref carries, matched by patch.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix branches on this ref
+        run: |
+          git fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
+          scripts/integration-status.sh HEAD | tee -a "$GITHUB_STEP_SUMMARY"
+
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
