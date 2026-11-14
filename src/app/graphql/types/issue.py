@@ -9,7 +9,7 @@ from sqlalchemy import select, func as sa_func
 
 from app.graphql.connections import Connection, build_connection
 from app.graphql.types.minimizable import Minimizable
-from app.graphql.types.user import GitHubUser, user_from_model, _node_id
+from app.graphql.types.user import Actor, GitHubUser, _node_id, actor_from_model, user_from_model
 from app.graphql.types.enums import IssueState
 from app.graphql.types.repository import (
     Label,
@@ -43,13 +43,13 @@ class IssueComment(Minimizable):
         return _node_id("IssueComment", self.database_id)
 
     @strawberry.field
-    async def author(self, info: Info) -> Optional[GitHubUser]:
+    async def author(self, info: Info) -> Optional[Actor]:
         from app.models.user import User
         db = info.context["db"]
         result = await db.execute(select(User).where(User.id == self._user_id))
         user = result.scalar_one_or_none()
         if user:
-            return user_from_model(user)
+            return actor_from_model(user)
         return None
 
     @strawberry.field
@@ -126,13 +126,13 @@ class Issue:
         return list(STANDARD_REACTION_GROUPS)
 
     @strawberry.field
-    async def author(self, info: Info) -> Optional[GitHubUser]:
+    async def author(self, info: Info) -> Optional[Actor]:
         from app.models.user import User
         db = info.context["db"]
         result = await db.execute(select(User).where(User.id == self._user_id))
         user = result.scalar_one_or_none()
         if user:
-            return user_from_model(user)
+            return actor_from_model(user)
         return None
 
     @strawberry.field
