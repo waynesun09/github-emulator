@@ -25,6 +25,7 @@ from strawberry.schema.config import StrawberryConfig
 from app.graphql.queries import Query
 from app.graphql.mutations import Mutation
 from app.graphql.types.stubs import ProjectV2ItemFieldSingleSelectValue
+from app.graphql.types.user import Bot
 from app.graphql.types.enums import (
     RepositoryPrivacy,
     RepositoryVisibility,
@@ -60,6 +61,8 @@ schema = strawberry.Schema(
     query=Query,
     mutation=Mutation,
     types=[
+        # Reachable only through the Actor interface, so listed here.
+        Bot,
         RepositoryPrivacy,
         RepositoryVisibility,
         PullRequestMergeMethod,
