@@ -20,6 +20,11 @@
 #   CI_STACK_RUNNERS  runner processes, i.e. jobs that run at once (default 1)
 #   CI_STACK_RUNNER_KIND  python (src/runners/emulator/runner.py, default) or
 #                   upstream (the real actions/runner, Linux x64)
+#   CI_STACK_TLS    1 to serve https from uvicorn itself, with a CA and a
+#                   certificate for CI_STACK_HOST made per run under
+#                   $CI_STACK_DIR/tls. Clients must trust tls/ca.pem; the
+#                   Python runner is pointed at it. Needed when a client
+#                   insists on https (gh, the OpenShell egress proxy).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,11 +37,41 @@ BIND="${CI_STACK_BIND:-127.0.0.1}"
 RUNNERS="${CI_STACK_RUNNERS:-1}"
 KIND="${CI_STACK_RUNNER_KIND:-python}"
 UPSTREAM_VERSION="${CI_STACK_UPSTREAM_RUNNER_VERSION:-2.317.0}"
-BASE="http://$HOST:$PORT"
+TLS="${CI_STACK_TLS:-0}"
+SCHEME=http
+[ "$TLS" = 1 ] && SCHEME=https
+BASE="$SCHEME://$HOST:$PORT"
+# Readiness is checked on loopback: CI_STACK_HOST may name an address this
+# machine cannot reach itself (one inside a VM), and only clients use it.
+LOCAL="$SCHEME://127.0.0.1:$PORT"
+if [ "$BIND" != 0.0.0.0 ]; then LOCAL="$SCHEME://$BIND:$PORT"; fi
 ADMIN_TOKEN="${GITHUB_EMULATOR_DEFAULT_ADMIN_TOKEN:-ghp_admin_default_token}"
+CA="$DIR/tls/ca.pem"
+
+# A throwaway CA and a server certificate for HOST and loopback.
+make_tls() {
+  local t="$DIR/tls" san
+  mkdir -p "$t"
+  if [[ "$HOST" =~ ^[0-9.]+$ ]]; then san="IP:$HOST"; else san="DNS:$HOST"; fi
+  san="$san,DNS:localhost,IP:127.0.0.1"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=ci-stack CA" \
+    -keyout "$t/ca-key.pem" -out "$CA" 2>/dev/null
+  openssl req -newkey rsa:2048 -nodes -subj "/CN=$HOST" \
+    -keyout "$t/server-key.pem" -out "$t/server.csr" 2>/dev/null
+  printf 'subjectAltName=%s\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\n' "$san" >"$t/ext.cnf"
+  openssl x509 -req -in "$t/server.csr" -CA "$CA" -CAkey "$t/ca-key.pem" \
+    -CAcreateserial -days 2 -extfile "$t/ext.cnf" -out "$t/server.pem" 2>/dev/null
+  chmod 600 "$t"/*-key.pem
+}
 
 start() {
   mkdir -p "$DIR/data" "$DIR/runner"
+  local tls_args=() curl_ca=()
+  if [ "$TLS" = 1 ]; then
+    make_tls
+    tls_args=(--ssl-certfile "$DIR/tls/server.pem" --ssl-keyfile "$DIR/tls/server-key.pem")
+    curl_ca=(--cacert "$CA")
+  fi
   # Job tokens and sessions are signed with SECRET_KEY, so never run on the
   # published default; and App JWTs are verified, not just decoded.
   GITHUB_EMULATOR_SECRET_KEY="${GITHUB_EMULATOR_SECRET_KEY:-$(openssl rand -hex 32)}" \
@@ -48,14 +83,15 @@ start() {
   GITHUB_EMULATOR_SSH_ENABLED=false \
   PYTHONPATH="$ROOT/src" \
     nohup "$PY" -m uvicorn app.main:app --host "$BIND" --port "$PORT" \
-      >"$DIR/emulator.log" 2>&1 &
+      ${tls_args[@]+"${tls_args[@]}"} >"$DIR/emulator.log" 2>&1 &
   echo $! >"$DIR/emulator.pid"
 
   for _ in $(seq 1 60); do
-    if curl -sf "$BASE/api/v3" >/dev/null; then break; fi
+    if curl -sf -m 2 ${curl_ca[@]+"${curl_ca[@]}"} "$LOCAL/api/v3" >/dev/null; then break; fi
     sleep 0.5
   done
-  curl -sf "$BASE/api/v3" >/dev/null || { tail -50 "$DIR/emulator.log"; exit 1; }
+  curl -sf -m 2 ${curl_ca[@]+"${curl_ca[@]}"} "$LOCAL/api/v3" >/dev/null ||
+    { tail -50 "$DIR/emulator.log"; exit 1; }
 
   # One runner executes one job at a time, so job concurrency is the number
   # of runner processes. Each gets its own work directory.
@@ -67,10 +103,17 @@ start() {
     esac
   done
   echo "emulator $BASE (pid $(cat "$DIR/emulator.pid")), $RUNNERS $KIND runner(s)"
+  if [ "$TLS" = 1 ]; then
+    echo "trust $CA: SSL_CERT_FILE / GIT_SSL_CAINFO, or the system store for actions/runner"
+  fi
 }
 
 start_python_runner() {
   local i="$1"
+  if [ "$TLS" = 1 ]; then
+    # httpx in runner.py and git in its checkout step read these.
+    export SSL_CERT_FILE="$CA" GIT_SSL_CAINFO="$CA"
+  fi
   GITHUB_EMULATOR_URL="$BASE" \
   GITHUB_EMULATOR_TOKEN="$ADMIN_TOKEN" \
   RUNNER_SCOPE=site \
@@ -108,8 +151,16 @@ pidfiles() {
 }
 
 stop() {
+  local f pid
   for f in $(pidfiles); do
-    kill "$(cat "$f")" 2>/dev/null || true
+    pid="$(cat "$f")"
+    kill "$pid" 2>/dev/null || true
+    # uvicorn can outlive TERM; give it 10 seconds, then KILL.
+    for _ in $(seq 1 20); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -9 "$pid" 2>/dev/null || true
     rm -f "$f"
   done
   # run.sh leaves Runner.Listener and Runner.Worker behind.

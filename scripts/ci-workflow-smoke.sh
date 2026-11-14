@@ -10,6 +10,9 @@ set -euo pipefail
 EMU="${EMU:-http://127.0.0.1:8000}"
 API="$EMU/api/v3"
 TOKEN="${GITHUB_EMULATOR_DEFAULT_ADMIN_TOKEN:-ghp_admin_default_token}"
+# With CI_STACK_TLS=1, point EMU_CA at the stack's tls/ca.pem.
+if [ -n "${EMU_CA:-}" ]; then export CURL_CA_BUNDLE="$EMU_CA" GIT_SSL_CAINFO="$EMU_CA"; fi
+GIT_BASE="${EMU%%://*}://admin:$TOKEN@${EMU#*://}"
 ORG="${SMOKE_ORG:-smoke-org}"
 REPO="${SMOKE_REPO:-smoke-repo}"
 MARKER="smoke-marker-$$-$RANDOM"
@@ -30,7 +33,7 @@ api POST "/orgs/$ORG/repos" -H 'Content-Type: application/json' \
   -d "{\"name\":\"$REPO\",\"auto_init\":true}" -o /dev/null -w '%{http_code}\n'
 
 echo "== push the workflow over git"
-git -c credential.helper= clone -q "http://admin:$TOKEN@${EMU#http://}/$ORG/$REPO.git" "$WORK/repo"
+git -c credential.helper= clone -q "$GIT_BASE/$ORG/$REPO.git" "$WORK/repo"
 mkdir -p "$WORK/repo/.github/workflows"
 cat >"$WORK/repo/.github/workflows/smoke.yml" <<EOF
 name: smoke

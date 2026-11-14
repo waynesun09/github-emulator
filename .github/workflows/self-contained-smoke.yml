@@ -73,6 +73,22 @@ jobs:
           CI_STACK_DIR: /tmp/ci-stack
         run: scripts/ci-stack.sh stop
 
+  # The packaging a consumer would use: the composite action, then the smoke
+  # against its outputs. Step timings in the run show its start-up cost.
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - id: emu
+        uses: ./.github/actions/emulator
+        with:
+          runners: "2"
+      - name: Run a workflow on the emulator
+        env:
+          EMU: ${{ steps.emu.outputs.url }}
+        run: scripts/ci-workflow-smoke.sh
+
   # Which workflow features each runner executes. Informational: a feature
   # failing here is a finding, not a broken build.
   capabilities:

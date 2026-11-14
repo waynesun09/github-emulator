@@ -11,6 +11,9 @@ set -uo pipefail
 EMU="${EMU:-http://127.0.0.1:8000}"
 API="$EMU/api/v3"
 TOKEN="${GITHUB_EMULATOR_DEFAULT_ADMIN_TOKEN:-ghp_admin_default_token}"
+# With CI_STACK_TLS=1, point EMU_CA at the stack's tls/ca.pem.
+if [ -n "${EMU_CA:-}" ]; then export CURL_CA_BUNDLE="$EMU_CA" GIT_SSL_CAINFO="$EMU_CA"; fi
+GIT_BASE="${EMU%%://*}://admin:$TOKEN@${EMU#*://}"
 ORG="${PROBE_ORG:-probe-org}"
 REPO="probe"
 REPORT="${1:-}"
@@ -27,7 +30,7 @@ api() {
 
 git_push_tree() {
   local name="$1" src="$2"
-  git -c credential.helper= clone -q "http://admin:$TOKEN@${EMU#http://}/$ORG/$name.git" "$WORK/$name"
+  git -c credential.helper= clone -q "$GIT_BASE/$ORG/$name.git" "$WORK/$name"
   cp -R "$src"/. "$WORK/$name/"
   git -C "$WORK/$name" add -A
   git -C "$WORK/$name" -c user.name=probe -c user.email=probe@example.com \

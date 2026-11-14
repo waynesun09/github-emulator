@@ -1,0 +1,81 @@
+name: GitHub emulator
+description: >
+  Start the GitHub emulator and its runner(s) as plain processes inside the
+  current job (SQLite, plain HTTP, no container), and wait until the API
+  answers. Jobs the emulator schedules run on this VM, as this job's user.
+inputs:
+  port:
+    description: API port. The upstream runner needs 80.
+    default: "8000"
+  host:
+    description: >
+      Host name the emulator puts in its URLs. Use a name that resolves to
+      this VM (e.g. <ip>.nip.io) when a sandbox cannot reach loopback.
+    default: 127.0.0.1
+  bind:
+    description: Address the API listens on; 0.0.0.0 with a non-loopback host.
+    default: 127.0.0.1
+  runners:
+    description: Runner processes, i.e. emulator jobs that run at once.
+    default: "1"
+  runner-kind:
+    description: python (src/runners/emulator/runner.py) or upstream (actions/runner).
+    default: python
+  state-dir:
+    description: SQLite file, git repositories, logs and pid files.
+    default: ${{ runner.temp }}/github-emulator
+outputs:
+  url:
+    description: Emulator root URL, for GITHUB_SERVER_URL.
+    value: ${{ steps.start.outputs.url }}
+  api-url:
+    description: REST root, for GITHUB_API_URL.
+    value: ${{ steps.start.outputs.api-url }}
+  token:
+    description: Seeded site-admin token.
+    value: ${{ steps.start.outputs.token }}
+  state-dir:
+    description: Where the logs are, for an upload on failure.
+    value: ${{ inputs.state-dir }}
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+      with:
+        enable-cache: true
+        cache-dependency-glob: ${{ github.action_path }}/../../../requirements.txt
+
+    - name: Install the emulator
+      shell: bash
+      env:
+        ROOT: ${{ github.action_path }}/../../..
+        VENV: ${{ inputs.state-dir }}/venv
+      run: |
+        uv venv -q --python 3.12 "$VENV"
+        VIRTUAL_ENV="$VENV" uv pip install -q -r "$ROOT/requirements.txt"
+
+    - name: Allow port 80
+      if: inputs.port == '80'
+      shell: bash
+      run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+
+    - name: Start
+      id: start
+      shell: bash
+      env:
+        ROOT: ${{ github.action_path }}/../../..
+        CI_STACK_DIR: ${{ inputs.state-dir }}
+        CI_STACK_PYTHON: ${{ inputs.state-dir }}/venv/bin/python
+        CI_STACK_PORT: ${{ inputs.port }}
+        CI_STACK_HOST: ${{ inputs.host }}
+        CI_STACK_BIND: ${{ inputs.bind }}
+        CI_STACK_RUNNERS: ${{ inputs.runners }}
+        CI_STACK_RUNNER_KIND: ${{ inputs.runner-kind }}
+      run: |
+        "$ROOT/scripts/ci-stack.sh" start
+        url="http://$CI_STACK_HOST:$CI_STACK_PORT"
+        {
+          echo "url=$url"
+          echo "api-url=$url/api/v3"
+          echo "token=${GITHUB_EMULATOR_DEFAULT_ADMIN_TOKEN:-ghp_admin_default_token}"
+        } >> "$GITHUB_OUTPUT"
