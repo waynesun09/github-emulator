@@ -9,7 +9,10 @@ FilesystemPEMAccessor reads. It prints the mint's ROLE_APP_IDS JSON on stdout.
 No secret leaves the VM: the keys are made by the emulator for this run and
 die with it. Idempotent: an existing App or installation is reused.
 
-Usage: seed-mint-apps.py BASE_URL ADMIN_TOKEN ORG PEM_DIR [ROLE ...]
+Usage: ci-seed-mint-apps.py BASE_URL ADMIN_TOKEN ORG PEM_DIR [ROLE ...]
+       ci-seed-mint-apps.py token BASE_URL ADMIN_TOKEN ORG ROLE [SECONDS]
+The second form prints an installation token (default lifetime one day) for
+a seeded role's App, e.g. the e2e App a behaviour harness acts as.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from typing import Any
 
 # The fullsend mint's roles; fix shares coder's App and key (PemSecretRole).
 DEFAULT_ROLES = ["fullsend", "triage", "coder", "review", "retro", "prioritize", "scribe", "e2e"]
@@ -33,7 +37,7 @@ APP_PERMISSIONS = {
 APP_ID_BASE = 910000
 
 
-def call(base: str, token: str, method: str, path: str, body: dict | None = None, prefix: str = "/api/v3") -> tuple[int, object]:
+def call(base: str, token: str, method: str, path: str, body: dict | None = None, prefix: str = "/api/v3") -> tuple[int, Any]:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         f"{base}{prefix}{path}", data=data, method=method,
@@ -52,13 +56,36 @@ def call(base: str, token: str, method: str, path: str, body: dict | None = None
             return exc.code, raw.decode(errors="replace")
 
 
-def must(status: int, payload: object, ok: tuple[int, ...], what: str) -> object:
+def must(status: int, payload: Any, ok: tuple[int, ...], what: str) -> Any:
     if status not in ok:
         sys.exit(f"{what}: HTTP {status} {payload}")
     return payload
 
 
+def print_token(base: str, token: str, org: str, role: str, seconds: int) -> None:
+    """Print an installation token for one seeded role App on the org.
+
+    It uses the emulator's site-admin route, so it needs no App key and may
+    live up to a day: long enough for a whole test suite to act as that App's
+    bot (for example the e2e role, which a behaviour harness acts as).
+    """
+    app = must(*call(base, token, "GET", f"/apps/{org}-{role}"), (200,), f"App {org}-{role}")
+    app_id = str(app["id"])
+    installation = must(*call(base, token, "POST", f"/admin/apps/{app_id}/installations", {
+        "account_login": org, "account_type": "Organization", "repositories": [],
+    }), (200, 201), f"installation of {role} on {org}")
+    minted = must(*call(base, token, "POST", f"/admin/apps/{app_id}/installations/{installation['id']}/access_tokens",
+                        {"expires_in": seconds}), (201,), f"token for {role}")
+    print(minted["token"])
+
+
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "token":
+        if len(sys.argv) not in (6, 7):
+            sys.exit("usage: ci-seed-mint-apps.py token BASE_URL ADMIN_TOKEN ORG ROLE [SECONDS]")
+        print_token(sys.argv[2].rstrip("/"), sys.argv[3], sys.argv[4], sys.argv[5],
+                    int(sys.argv[6]) if len(sys.argv) == 7 else 86400)
+        return
     if len(sys.argv) < 5:
         sys.exit(__doc__)
     base, token, org, pem_dir = sys.argv[1].rstrip("/"), sys.argv[2], sys.argv[3], sys.argv[4]
