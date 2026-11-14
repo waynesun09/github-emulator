@@ -371,7 +371,7 @@ async def _issue_installation_token(db, installation: AppInstallation, body: dic
     expires = datetime.now(timezone.utc) + lifetime
     db.add(AppInstallationToken(installation_id=installation.id, token_hash=hashlib.sha256(raw.encode()).hexdigest(), token_prefix=raw[:8], repositories=sorted(set(requested_full)), permissions=permissions, expires_at=expires))
     await db.commit()
-    return {"token": raw, "expires_at": _fmt_dt(expires), "permissions": permissions, "repository_selection": "selected" if installation.repositories else "all", "repositories": [{"full_name": item} for item in sorted(set(requested_full))]}
+    return {"token": raw, "expires_at": _fmt_dt(expires), "permissions": permissions, "repository_selection": "selected" if (body.get("repositories") or installation.repositories) else "all", "repositories": [{"full_name": item} for item in sorted(set(requested_full))]}
 
 
 @router.get("/app/installations/{installation_id}/repositories")
