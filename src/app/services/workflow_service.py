@@ -236,6 +236,17 @@ def _refusal_steps(name: str, why: str) -> list[dict]:
     return [{"name": name, "run": f"echo {quoted} >&2\nexit 1"}]
 
 
+def _reusable_placeholder(key: str, config: dict, why: str) -> dict:
+    """A job standing in for a reusable-workflow call that could not be inlined."""
+    placeholder = {
+        name: value for name, value in copy.deepcopy(config).items()
+        if name not in ("uses", "with", "secrets")
+    }
+    placeholder["steps"] = _refusal_steps("Resolve reusable workflow", why)
+    placeholder["name"] = placeholder.get("name", f"{key} (reusable workflow)")
+    return placeholder
+
+
 def build_job_graph(workflow_yaml: dict) -> list[dict]:
     """Parse jobs section into a dependency-ordered list."""
     jobs_config = workflow_yaml.get("jobs", {})
@@ -592,22 +603,27 @@ async def _materialize_reusable_jobs(
 
         uses = str(config["uses"])
         if depth >= _MAX_REUSABLE_WORKFLOW_DEPTH or uses in ancestry:
-            placeholder = copy.deepcopy(config)
-            placeholder["steps"] = []
-            placeholder["name"] = placeholder.get("name", f"{key} (reusable workflow)")
-            expanded[key] = placeholder
+            expanded[key] = _reusable_placeholder(
+                key, config,
+                f"reusable workflow {uses} was not run: calls nest deeper than "
+                f"{_MAX_REUSABLE_WORKFLOW_DEPTH} levels or call themselves",
+            )
             continue
 
         called, called_repo_path, called_ref, _, called_full_name = (
             await _resolve_reusable_workflow(uses, repo_disk_path, ref, db)
         )
         if called is None or not isinstance(called.get("jobs"), dict):
-            # Keep unresolved calls inspectable and non-successful rather than
-            # silently dropping them from the run graph.
-            placeholder = copy.deepcopy(config)
-            placeholder["steps"] = []
-            placeholder["name"] = placeholder.get("name", f"{key} (reusable workflow)")
-            expanded[key] = placeholder
+            # Keep unresolved calls inspectable and failing rather than
+            # silently dropping them from the run graph. A placeholder with no
+            # steps used to pass, so a run whose whole pipeline was a call to
+            # a repository this emulator did not hold looked green.
+            expanded[key] = _reusable_placeholder(
+                key, config,
+                f"reusable workflow {uses} was not found on this emulator; it "
+                "resolves only against repositories stored here, so push the "
+                "repository that holds it at that ref first",
+            )
             continue
 
         call_inputs = _render_reusable_call_context(
