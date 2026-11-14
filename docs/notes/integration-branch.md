@@ -39,8 +39,10 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 15 | fix-compare-merge-base | 133699f | Compare and cross-repo pulls use the real merge base |
 | 16 | fix-closed-by-pull-requests-references | a78f36d | GraphQL `closedByPullRequestsReferences` |
 | 17 | fix-close-issue-state-reason | 197ee90 | GraphQL `stateReason` as an enum on close and on the issue |
+| 18 | fix-collaborator-permission-none | a49e162 | An org member with no role on a public org repo has read permission, not none |
+| 19 | fix-review-own-pull-request | 6cc9aa3 | The PR author's APPROVE or REQUEST_CHANGES gets 422; review create returns 200; POST submit is accepted |
 
-Nothing is pending. Every fix branch on the fork is listed above.
+Nothing is pending. Every fix branch on the fork is listed above, except bt-f4-suite-timing, which is measurement only.
 
 ## Not included on purpose
 
