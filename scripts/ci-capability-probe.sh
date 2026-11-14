@@ -186,6 +186,26 @@ jobs:
       - run: grep -q artifact-payload got/a.txt && echo "MARK-artifacts"
 EOF
 
+# The versions fullsend pins today, by commit: upload-artifact v7.0.2 and
+# download-artifact v7.0.0.
+wf artifacts-pinned <<'EOF'
+on: workflow_dispatch
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdir -p out/logs && echo pinned-payload > out/logs/a.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with: {name: probe-pinned, path: out}
+  down:
+    needs: up
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with: {name: probe-pinned, path: got}
+      - run: grep -q pinned-payload got/logs/a.txt && echo "MARK-artifacts-pinned"
+EOF
+
 wf concurrency <<'EOF'
 on: workflow_dispatch
 jobs:
@@ -201,7 +221,7 @@ EOF
 
 git_push_tree "$REPO" "$S"
 
-FEATURES=(composite reusable emuhost githubcom container oidc artifacts concurrency)
+FEATURES=(composite reusable emuhost githubcom container oidc artifacts artifacts-pinned concurrency)
 
 # Dispatch the named workflows and wait until they complete or time out.
 dispatch_and_wait() {
