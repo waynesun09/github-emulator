@@ -143,7 +143,8 @@ start_python_runner() {
 # The real actions/runner, registered at enterprise scope the way
 # src/runners/upstream/entrypoint.sh does it. Linux x64 only.
 start_upstream_runner() {
-  local i="$1" home="$DIR/runner-$i" enterprise="${CI_STACK_ENTERPRISE:-breadboard}"
+  local i="$1"
+  local home="$DIR/runner-$i" enterprise="${CI_STACK_ENTERPRISE:-breadboard}"
   local tarball="$DIR/actions-runner-$UPSTREAM_VERSION.tar.gz"
   if [ ! -f "$tarball" ]; then
     curl -fsSL -o "$tarball" \
@@ -155,10 +156,17 @@ start_upstream_runner() {
   local reg
   reg="$(curl -sf -X POST -H "Authorization: token $ADMIN_TOKEN" \
     "$BASE/api/v3/enterprises/$enterprise/actions/runners/registration-token" | jq -r .token)"
-  (cd "$home" && ./config.sh --unattended --replace \
+  # Inside a GitHub-hosted job the environment describes that job, and some
+  # of it changes how a runner behaves: ACTIONS_RUNNER_RETURN_JOB_RESULT_FOR_HOSTED
+  # makes runner 2.33x run one job and exit. Start this runner without the
+  # outer job's ACTIONS_*, GITHUB_* and RUNNER_* variables.
+  local outer=()
+  while IFS= read -r name; do outer+=(-u "$name"); done < <(
+    env | cut -d= -f1 | grep -E '^(ACTIONS|GITHUB|RUNNER)_[A-Za-z0-9_]*$')
+  (cd "$home" && env ${outer[@]+"${outer[@]}"} ./config.sh --unattended --replace \
     --url "$BASE/enterprises/$enterprise" --token "$reg" \
     --name "ci-runner-$i" --labels "$LABELS" --work _work) >"$DIR/runner-$i.log" 2>&1
-  (cd "$home" && nohup ./run.sh >>"$DIR/runner-$i.log" 2>&1 &
+  (cd "$home" && env ${outer[@]+"${outer[@]}"} nohup ./run.sh >>"$DIR/runner-$i.log" 2>&1 &
    echo $! >"$DIR/runner-$i.pid")
 }
 
