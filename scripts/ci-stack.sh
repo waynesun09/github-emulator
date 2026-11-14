@@ -28,6 +28,19 @@
 #                   a client insists on https (gh, the OpenShell egress proxy).
 #   CI_STACK_SYSTEM_TRUST  1 to add the CA to the system store with sudo
 #                   (Debian/Ubuntu). actions/runner (.NET) reads only that.
+#   CI_STACK_LOCALHOST_DNS  1 to make CI_STACK_HOST, which must end in
+#                   .localhost, resolve to this machine's own address instead
+#                   of loopback, for every client: the runner and its steps
+#                   (glibc reads /etc/hosts) and a host-network container that
+#                   asks DNS directly (an OpenShell sandbox supervisor, whose
+#                   policy DNS refuses loopback answers). systemd-resolved
+#                   always answers *.localhost with loopback, even over an
+#                   /etc/hosts entry, so a dnsmasq on 127.0.0.2 answers this
+#                   one name (and its subdomains) and forwards everything else
+#                   to the previous resolver; /etc/resolv.conf points at it.
+#                   Other names resolve as before. Linux only (sudo); a no-op
+#                   elsewhere. Implies CI_STACK_BIND=0.0.0.0 unless that is set.
+#                   `stop` does not undo it: the VM is discarded after the job.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,7 +49,12 @@ PORT="${CI_STACK_PORT:-8000}"
 PY="${CI_STACK_PYTHON:-python3}"
 LABELS="${CI_STACK_RUNNER_LABELS:-self-hosted,linux,ubuntu-latest,ubuntu-24.04}"
 HOST="${CI_STACK_HOST:-127.0.0.1}"
-BIND="${CI_STACK_BIND:-127.0.0.1}"
+LOCALHOST_DNS="${CI_STACK_LOCALHOST_DNS:-0}"
+if [ "$LOCALHOST_DNS" = 1 ]; then
+  BIND="${CI_STACK_BIND:-0.0.0.0}"
+else
+  BIND="${CI_STACK_BIND:-127.0.0.1}"
+fi
 RUNNERS="${CI_STACK_RUNNERS:-1}"
 KIND="${CI_STACK_RUNNER_KIND:-python}"
 UPSTREAM_VERSION="${CI_STACK_UPSTREAM_RUNNER_VERSION:-2.338.2}"
@@ -74,6 +92,50 @@ make_tls() {
   fi
 }
 
+# Resolve HOST (*.localhost) to this machine's own address for every client;
+# see CI_STACK_LOCALHOST_DNS above. Idempotent.
+localhost_dns() {
+  [ "$LOCALHOST_DNS" = 1 ] || return 0
+  if [ "$(uname -s)" != Linux ]; then
+    echo "CI_STACK_LOCALHOST_DNS: Linux only; leaving $HOST to the system resolver" >&2
+    return 0
+  fi
+  case "$HOST" in
+    *.localhost) ;;
+    *) echo "CI_STACK_LOCALHOST_DNS needs a CI_STACK_HOST ending in .localhost, got $HOST" >&2; exit 2 ;;
+  esac
+  local ip upstream
+  ip="$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+  if [ -z "$ip" ]; then
+    echo "CI_STACK_LOCALHOST_DNS: could not find this machine's address" >&2
+    exit 1
+  fi
+  # glibc (files before dns): one line for HOST, replaced if it changed.
+  if grep -qE "^[^#]*[[:space:]]$HOST([[:space:]]|\$)" /etc/hosts; then
+    sudo sed -i -E "/[[:space:]]$HOST([[:space:]]|\$)/d" /etc/hosts
+  fi
+  echo "$ip $HOST" | sudo tee -a /etc/hosts >/dev/null
+  # Everything that asks DNS directly. Keep the first resolver seen as the
+  # upstream, so a second start does not forward dnsmasq to itself.
+  if [ ! -f "$DIR/resolv.conf.orig" ]; then
+    cp -L /etc/resolv.conf "$DIR/resolv.conf.orig"
+  fi
+  upstream="$(awk '$1 == "nameserver" { print $2; exit }' "$DIR/resolv.conf.orig")"
+  command -v dnsmasq >/dev/null || sudo apt-get -qq install -y dnsmasq-base >/dev/null
+  sudo ip addr add 127.0.0.2/8 dev lo 2>/dev/null || true
+  if [ -f "$DIR/dnsmasq.pid" ] && sudo kill -0 "$(cat "$DIR/dnsmasq.pid")" 2>/dev/null; then
+    sudo kill "$(cat "$DIR/dnsmasq.pid")"
+    sleep 0.5
+  fi
+  sudo dnsmasq --listen-address=127.0.0.2 --bind-interfaces --port=53 --no-resolv --no-hosts \
+    --server="$upstream" --address="/$HOST/$ip" --pid-file="$DIR/dnsmasq.pid"
+  # /etc/resolv.conf is a symlink into systemd-resolved's runtime directory on
+  # Ubuntu; replace the link, not the file resolved owns.
+  sudo rm -f /etc/resolv.conf
+  printf 'nameserver 127.0.0.2\noptions edns0 trust-ad\n' | sudo tee /etc/resolv.conf >/dev/null
+  echo "$HOST -> $ip (hosts file and dnsmasq on 127.0.0.2; other names via $upstream)"
+}
+
 # What a runner and the steps it starts need to trust the emulator.
 export_trust() {
   if [ "$TLS" = 1 ]; then
@@ -84,6 +146,7 @@ export_trust() {
 
 start() {
   mkdir -p "$DIR/data" "$DIR/runner"
+  localhost_dns
   local tls_args=() curl_ca=()
   if [ "$TLS" = 1 ]; then
     make_tls
