@@ -58,6 +58,7 @@ fi
 RUNNERS="${CI_STACK_RUNNERS:-1}"
 KIND="${CI_STACK_RUNNER_KIND:-python}"
 UPSTREAM_VERSION="${CI_STACK_UPSTREAM_RUNNER_VERSION:-2.338.2}"
+UPSTREAM_SHA256="${CI_STACK_UPSTREAM_RUNNER_SHA256:-baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40}"
 TLS="${CI_STACK_TLS:-0}"
 SCHEME=http
 [ "$TLS" = 1 ] && SCHEME=https
@@ -216,8 +217,16 @@ start_upstream_runner() {
   local home="$DIR/runner-$i" enterprise="${CI_STACK_ENTERPRISE:-breadboard}"
   local tarball="$DIR/actions-runner-$UPSTREAM_VERSION.tar.gz"
   if [ ! -f "$tarball" ]; then
-    curl -fsSL -o "$tarball" \
+    curl -fsSL -o "$tarball.partial" \
       "https://github.com/actions/runner/releases/download/v$UPSTREAM_VERSION/actions-runner-linux-x64-$UPSTREAM_VERSION.tar.gz"
+    # The digest GitHub publishes for the release asset. Keep it in step with
+    # the version: a new version needs its own CI_STACK_UPSTREAM_RUNNER_SHA256.
+    if ! echo "$UPSTREAM_SHA256  $tarball.partial" | sha256sum -c --quiet -; then
+      echo "actions/runner $UPSTREAM_VERSION does not match CI_STACK_UPSTREAM_RUNNER_SHA256" >&2
+      rm -f "$tarball.partial"
+      exit 1
+    fi
+    mv "$tarball.partial" "$tarball"
   fi
   mkdir -p "$home"
   tar -xzf "$tarball" -C "$home"

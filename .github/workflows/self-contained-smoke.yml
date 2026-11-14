@@ -25,7 +25,9 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     name: tests (${{ matrix.shard }}/8)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
       - name: Install
         run: uv venv -q --python 3.12 && uv pip install -q -e ".[dev]"
@@ -40,7 +42,7 @@ jobs:
           if grep -q -E 'test_(security_headers|frontend_app|admin_frontend_api|route_contracts|pull_diff)\.py' "$RUNNER_TEMP/shard-files"; then
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.pick.outputs.frontend == 'true'
         with:
           node-version: "22"
@@ -57,8 +59,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Fix branches on this ref
         run: |
@@ -69,7 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install the emulator's Python dependencies
         id: deps
@@ -140,7 +145,9 @@ jobs:
           - {preset: fullsend, kind: upstream, port: "443", tls: "true", host: ghemu.localhost, dns: "true"}
     name: action (${{ matrix.preset }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - id: emu
         uses: ./.github/actions/emulator
         with:
@@ -190,7 +197,9 @@ jobs:
       PROBE_WAIT_SECONDS: "180"
       PROBE_LOG_DIR: /tmp/ci-stack/probe-logs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: python3 -m venv /tmp/emu-venv && /tmp/emu-venv/bin/pip install -q -r requirements.txt
       - name: Allow ports below 1024
         run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
@@ -267,7 +276,7 @@ jobs:
         run: scripts/ci-stack.sh stop
       - name: Keep the logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: capabilities-${{ matrix.name }}
           path: |

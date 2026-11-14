@@ -277,7 +277,7 @@ async def create_or_update_file(
     try:
         await _git(repo_path, "update-ref", f"refs/heads/{branch}", commit_sha, parent_sha or "")
     except RuntimeError:
-        raise HTTPException(status_code=409, detail=f"{path} does not match {sha}" if sha else "Conflict")
+        raise HTTPException(status_code=409, detail=f"{path} does not match {sha}" if sha else "Conflict") from None
     await record_branch(db, repository, branch, commit_sha)
     repository.pushed_at = datetime.now(timezone.utc)
     await db.commit()

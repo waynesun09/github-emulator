@@ -40,6 +40,11 @@ inputs:
   runner-version:
     description: actions/runner release for runner-kind upstream.
     default: 2.338.2
+  runner-sha256:
+    description: >
+      SHA-256 of that release's linux-x64 tarball, as GitHub publishes it.
+      Required with a runner-version other than the default.
+    default: ""
   state-dir:
     description: SQLite file, git repositories, logs and pid files.
     default: ${{ runner.temp }}/github-emulator
@@ -101,6 +106,7 @@ runs:
         CI_STACK_RUNNERS: ${{ inputs.runners }}
         CI_STACK_RUNNER_KIND: ${{ inputs.runner-kind }}
         CI_STACK_UPSTREAM_RUNNER_VERSION: ${{ inputs.runner-version }}
+        CI_STACK_UPSTREAM_RUNNER_SHA256: ${{ inputs.runner-sha256 }}
       run: |
         "$ROOT/scripts/ci-stack.sh" start
         scheme=http
