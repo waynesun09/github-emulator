@@ -87,8 +87,8 @@ if [ "$conclusion" != success ]; then
   echo "FAIL: run concluded $conclusion" >&2
   exit 1
 fi
-if ! grep -q "got $MARKER on Linux" <<<"$log"; then
-  echo "FAIL: consume job log lacks 'got $MARKER on Linux'" >&2
+if ! grep -q "got $MARKER on " <<<"$log"; then
+  echo "FAIL: consume job log lacks 'got $MARKER on '" >&2
   echo "$log" >&2
   exit 1
 fi

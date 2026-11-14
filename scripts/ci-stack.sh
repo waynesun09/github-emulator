@@ -12,6 +12,11 @@
 #   CI_STACK_PORT   API port (default 8000)
 #   CI_STACK_PYTHON python with requirements.txt installed (default python3)
 #   CI_STACK_RUNNER_LABELS  labels the runner serves
+#   CI_STACK_HOST   host name the emulator puts in its URLs (default
+#                   127.0.0.1). A sandbox that cannot reach loopback needs a
+#                   name that resolves to this machine, e.g. <ip>.nip.io.
+#   CI_STACK_BIND   address uvicorn listens on (default 127.0.0.1; use
+#                   0.0.0.0 with a non-loopback CI_STACK_HOST)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,18 +24,24 @@ DIR="${CI_STACK_DIR:-$ROOT/.ci-stack}"
 PORT="${CI_STACK_PORT:-8000}"
 PY="${CI_STACK_PYTHON:-python3}"
 LABELS="${CI_STACK_RUNNER_LABELS:-self-hosted,linux,ubuntu-latest,ubuntu-24.04}"
-BASE="http://127.0.0.1:$PORT"
+HOST="${CI_STACK_HOST:-127.0.0.1}"
+BIND="${CI_STACK_BIND:-127.0.0.1}"
+BASE="http://$HOST:$PORT"
 ADMIN_TOKEN="${GITHUB_EMULATOR_DEFAULT_ADMIN_TOKEN:-ghp_admin_default_token}"
 
 start() {
   mkdir -p "$DIR/data" "$DIR/runner"
+  # Job tokens and sessions are signed with SECRET_KEY, so never run on the
+  # published default; and App JWTs are verified, not just decoded.
+  GITHUB_EMULATOR_SECRET_KEY="${GITHUB_EMULATOR_SECRET_KEY:-$(openssl rand -hex 32)}" \
+  GITHUB_EMULATOR_APP_JWT_PERMISSIVE="${GITHUB_EMULATOR_APP_JWT_PERMISSIVE:-false}" \
   GITHUB_EMULATOR_DATA_DIR="$DIR/data" \
   GITHUB_EMULATOR_DATABASE_URL="sqlite+aiosqlite:///$DIR/data/github_emulator.db" \
   GITHUB_EMULATOR_BASE_URL="$BASE" \
-  GITHUB_EMULATOR_HOSTNAME="127.0.0.1" \
+  GITHUB_EMULATOR_HOSTNAME="$HOST" \
   GITHUB_EMULATOR_SSH_ENABLED=false \
   PYTHONPATH="$ROOT/src" \
-    nohup "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" \
+    nohup "$PY" -m uvicorn app.main:app --host "$BIND" --port "$PORT" \
       >"$DIR/emulator.log" 2>&1 &
   echo $! >"$DIR/emulator.pid"
 
