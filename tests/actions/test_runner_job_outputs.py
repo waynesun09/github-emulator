@@ -9,8 +9,11 @@ import pytest
 from sqlalchemy import select
 
 from app.api.actions_runner_protocol import _workflow_guid
-from app.models.actions import WorkflowJob
+from app.models.actions import Workflow, WorkflowJob
+from app.models.repository import Repository
+from app.services.workflow_service import create_workflow_run
 from tests.actions.test_uses_steps import _claim_job, uses_workflow  # noqa: F401
+from tests.conftest import API, auth_headers
 
 PLAN_EVENTS = "557624af-b29e-4c20-8ab0-0399d2204f3f"
 
@@ -56,6 +59,52 @@ async def test_job_completed_outputs_are_kept_and_secrets_are_not(
     # From plan version 8 the listener no longer finishes the request, so
     # this event completes the job.
     assert (job.status, job.conclusion) == ("completed", "success")
+
+
+@pytest.fixture
+async def outputs_workflow(client, db_session, test_user, test_token):
+    """A job that declares outputs, in the repository _claim_job uses."""
+    resp = await client.post(
+        f"{API}/user/repos", json={"name": "uses-step-repo"}, headers=auth_headers(test_token)
+    )
+    assert resp.status_code == 201
+    repo = (await db_session.execute(
+        select(Repository).where(Repository.full_name == "testuser/uses-step-repo")
+    )).scalar_one()
+    workflow = Workflow(repo_id=repo.id, name="Outputs", path=".github/workflows/out.yml")
+    db_session.add(workflow)
+    await db_session.flush()
+    await create_workflow_run(
+        db_session, workflow, {
+            "name": "Outputs", "on": ["push"],
+            "jobs": {"produce": {
+                "runs-on": ["self-hosted", "linux"],
+                "outputs": {
+                    "value": "${{ steps.out.outputs.value }}",
+                    "label": "stage-${{ steps.out.outputs.value }}",
+                    "fixed": "plain",
+                },
+                "steps": [{"id": "out", "run": "echo value=x >> $GITHUB_OUTPUT"}],
+            }},
+        }, event="push", payload={"ref": "refs/heads/main"}, actor=test_user,
+        head_sha="abc123", head_branch="main",
+    )
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_the_runner_is_told_the_jobs_outputs(client, outputs_workflow, test_token):
+    body = await _claim_job(client, test_token)
+    outputs = {item["Key"]: item["Value"] for item in body["jobOutputs"]["map"]}
+    assert outputs["value"] == {"type": 3, "expr": "steps.out.outputs.value"}
+    assert outputs["label"] == {"type": 3, "expr": "format('stage-{0}', steps.out.outputs.value)"}
+    assert outputs["fixed"] == "plain"
+
+
+@pytest.mark.asyncio
+async def test_a_job_without_outputs_sends_none(client, uses_workflow, test_token):  # noqa: F811
+    body = await _claim_job(client, test_token)
+    assert "jobOutputs" not in body
 
 
 @pytest.mark.asyncio
