@@ -1,0 +1,32 @@
+name: suite timing
+on:
+  push:
+    branches: [bt-f4-suite-timing, bt-f4-suite-timing-*]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: |
+          uv venv -q .venv
+          uv pip install -q -e ".[dev]"
+          uv pip install -q pytest-xdist
+          nproc; free -g
+      - name: Full suite, serial
+        run: |
+          start=$(date +%s)
+          uv run --no-sync pytest tests/ -q -p no:cacheprovider -W ignore::DeprecationWarning \
+            --durations=25 --durations-min=1.0 2>&1 | tail -60
+          echo "SERIAL_SECONDS=$(( $(date +%s) - start ))"
+      - name: Full suite, xdist -n auto
+        if: always()
+        run: |
+          start=$(date +%s)
+          uv run --no-sync pytest tests/ -q -p no:cacheprovider -W ignore::DeprecationWarning -n auto 2>&1 | tail -15
+          echo "XDIST_SECONDS=$(( $(date +%s) - start ))"
