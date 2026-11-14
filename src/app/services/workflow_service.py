@@ -225,6 +225,17 @@ def expand_matrix(job_config: dict) -> list[dict]:
     return expanded
 
 
+def _refusal_steps(name: str, why: str) -> list[dict]:
+    """One step that fails with ``why`` in place of a job this emulator cannot run.
+
+    The `::error::` line becomes an annotation on the run, so the refusal is
+    visible from the UI and not only from the step log. The message is one
+    single-quoted shell word, so nothing in it is read by the shell.
+    """
+    quoted = "'" + f"::error::{why}".replace("'", "'\\''") + "'"
+    return [{"name": name, "run": f"echo {quoted} >&2\nexit 1"}]
+
+
 def build_job_graph(workflow_yaml: dict) -> list[dict]:
     """Parse jobs section into a dependency-ordered list."""
     jobs_config = workflow_yaml.get("jobs", {})
@@ -254,6 +265,17 @@ def build_job_graph(workflow_yaml: dict) -> list[dict]:
             needs = [needs]
 
         steps = config.get("steps", [])
+        unsupported = [key_name for key_name in ("container", "services") if config.get(key_name)]
+        if unsupported:
+            # Neither runner here starts job or service containers. Running
+            # the steps anyway puts them on the runner host, where they pass
+            # or fail for reasons unrelated to the workflow: a false result
+            # either way. Refuse the job instead.
+            steps = _refusal_steps(
+                "Unsupported job keys",
+                f"{' and '.join(f'{k}:' for k in unsupported)} not supported by this "
+                "emulator's runners; the job's steps were NOT run",
+            )
 
         jobs.append({
             "key": key,
