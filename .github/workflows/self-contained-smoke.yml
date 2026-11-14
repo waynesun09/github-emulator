@@ -75,18 +75,34 @@ jobs:
 
   # The packaging a consumer would use: the composite action, then the smoke
   # against its outputs. Step timings in the run show its start-up cost.
+  # "fast" is the Python runner; "fullsend" is the shape fullsend's jobs need:
+  # the real runner over https on a *.localhost name that resolves to the VM.
   action:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {preset: fast, kind: python, port: "8000", tls: "false", host: 127.0.0.1, dns: "false"}
+          - {preset: fullsend, kind: upstream, port: "443", tls: "true", host: ghemu.localhost, dns: "true"}
+    name: action (${{ matrix.preset }})
     steps:
       - uses: actions/checkout@v4
       - id: emu
         uses: ./.github/actions/emulator
         with:
+          runner-kind: ${{ matrix.kind }}
+          port: ${{ matrix.port }}
+          tls: ${{ matrix.tls }}
+          system-trust: ${{ matrix.tls }}
+          host: ${{ matrix.host }}
+          localhost-dns: ${{ matrix.dns }}
           runners: "2"
       - name: Run a workflow on the emulator
         env:
           EMU: ${{ steps.emu.outputs.url }}
+          EMU_CA: ${{ steps.emu.outputs.ca-file }}
         run: scripts/ci-workflow-smoke.sh
 
   # Which workflow features each runner executes. Informational: a feature
