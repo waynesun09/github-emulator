@@ -24,8 +24,19 @@ async def configuration(request: Request):
 
 
 @router.get("/.well-known/jwks.json")
+@router.get("/.well-known/jwks")
 async def keys():
+    # GitHub's Actions issuer serves its keys at /.well-known/jwks; relying
+    # parties configured for GitHub use that path directly.
     return jwks()
+
+
+def _owner_id(repository: Repository | None) -> str:
+    if repository is None:
+        return ""
+    if repository.owner_type == "Organization" and repository.organization is not None:
+        return str(repository.organization.id)
+    return str(repository.owner_id)
 
 
 @router.get("/actions/oidc/token")
@@ -79,6 +90,10 @@ async def actions_token(request: Request, db: DbSession, audience: str | None = 
         "repository": full_name,
         "repository_owner": full_name.split("/", 1)[0] if full_name else "",
         "repository_id": str(repository.id) if repository else "",
+        # GitHub's id for the owner, the same as the repository's owner.id
+        # in the REST API: the organization's id for an org-owned repository.
+        # A relying party pins an owner by id because names can be re-used.
+        "repository_owner_id": _owner_id(repository),
         "run_id": str(run.id),
         "run_number": str(run.run_number),
         "run_attempt": str(run.run_attempt),
