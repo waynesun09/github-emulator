@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbSession
@@ -32,9 +32,11 @@ from app.models.actions import (
 from app.models.repository import Repository
 from app.services.action_download_service import (
     UpstreamActionError,
+    build_local_action_archive,
     fetch_action_archive,
     parse_uses,
     resolve_action_sha,
+    resolve_local_action_sha,
 )
 from app.services.auth_service import hash_token
 from app.services.job_token_service import issue_job_token
@@ -1327,14 +1329,18 @@ async def dt_resolve_action_download_info(
                 400, "NonRetryableActionDownloadInfoException",
                 f"action reference needs nameWithOwner and ref: {reference!r}",
             )
-        try:
-            sha = await resolve_action_sha(name, ref)
-        except UpstreamActionError as exc:
-            if exc.not_found:
-                return _wrapped_exception(
-                    404, "UnresolvableActionDownloadInfoException", str(exc)
-                )
-            return _wrapped_exception(502, "DistributedTaskException", str(exc))
+        # A repository on this emulator first, as GHES does, then upstream.
+        local = await _local_action_repository(name, db)
+        sha = await resolve_local_action_sha(local.disk_path, ref) if local else None
+        if sha is None:
+            try:
+                sha = await resolve_action_sha(name, ref)
+            except UpstreamActionError as exc:
+                if exc.not_found:
+                    return _wrapped_exception(
+                        404, "UnresolvableActionDownloadInfoException", str(exc)
+                    )
+                return _wrapped_exception(502, "DistributedTaskException", str(exc))
         archive = f"{base}/_apis/distributedtask/actions/archives/{name}/{sha}/archive"
         resolved[f"{name}@{ref}"] = {
             "nameWithOwner": name,
@@ -1347,15 +1353,29 @@ async def dt_resolve_action_download_info(
     return {"actions": resolved}
 
 
+async def _local_action_repository(name_with_owner: str, db) -> Repository | None:
+    """The repository on this emulator a `uses:` reference names, if it has one."""
+    repository = (await db.execute(
+        select(Repository).where(func.lower(Repository.full_name) == name_with_owner.lower())
+    )).scalar_one_or_none()
+    return repository if repository is not None and repository.disk_path else None
+
+
 @router.get("/_apis/distributedtask/actions/archives/{owner}/{repo}/{sha}/archive.{fmt}")
 @router.get("/{owner_}/{repo_}/_apis/distributedtask/actions/archives/{owner}/{repo}/{sha}/archive.{fmt}")
 async def dt_action_archive(
     owner: str, repo: str, sha: str, fmt: str, request: Request, db: DbSession,
 ):
-    """Serve an action archive, fetched from upstream once per SHA."""
+    """Serve an action archive: built from a repository here when it holds the
+    commit, else fetched from upstream once per SHA."""
     await _get_job_from_download_credential(request, db)
+    name = f"{owner}/{repo}"
     try:
-        path = await fetch_action_archive(f"{owner}/{repo}", sha, fmt)
+        local = await _local_action_repository(name, db)
+        if local and await resolve_local_action_sha(local.disk_path, sha) == sha:
+            path = await build_local_action_archive(local.disk_path, name, sha, fmt)
+        else:
+            path = await fetch_action_archive(name, sha, fmt)
     except UpstreamActionError as exc:
         raise HTTPException(status_code=404 if exc.not_found else 502, detail=str(exc)) from exc
     media = "application/gzip" if fmt == "tar.gz" else "application/zip"
