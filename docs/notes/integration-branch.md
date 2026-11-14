@@ -41,6 +41,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 17 | fix-close-issue-state-reason | 197ee90 | GraphQL `stateReason` as an enum on close and on the issue |
 | 18 | fix-collaborator-permission-none | a49e162 | An org member with no role on a public org repo has read permission, not none |
 | 19 | fix-review-own-pull-request | 6cc9aa3 | The PR author's APPROVE or REQUEST_CHANGES gets 422; review create returns 200; POST submit is accepted |
+| 27 | chore-repo-hygiene | 58335de | pre-commit (ruff, gitleaks, shellcheck, actionlint, zizmor, frontend eslint/prettier), `.gitleaks.toml`, committed `uv.lock`, hygiene CI (hooks on the change, full-history secrets, pip-audit, npm audit, frontend checks), Dependabot, pinned Caddy, runner TLS verification by default |
 | 26 | fix-job-token-verification | d7f5440 | Job-server routes authenticate the job token through `validate_job_token` (signature, issuer, lifetime) and answer 401 when it fails |
 | 25 | fix-emulator-hosted-actions | 1d30e6f | `uses: owner/repo@ref` resolves against a repository on the emulator first (as GHES), archive built with `git archive`; upstream otherwise |
 | 24 | fix-reusable-caller-needs | bb982e9 | A job can need a reusable-workflow caller and read `needs.<caller>.outputs` and `.result` (stacked on 5) |
