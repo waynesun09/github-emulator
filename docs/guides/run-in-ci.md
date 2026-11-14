@@ -19,7 +19,7 @@ For the GitHub-faithful setup, pin the action by full commit SHA (shown here as 
 
 ```yaml
 - id: emu
-  uses: waynesun09/github-emulator/.github/actions/emulator@<sha>
+  uses: jctanner/github-emulator/.github/actions/emulator@<sha>
   with:
     runner-kind: upstream
     port: "443"
