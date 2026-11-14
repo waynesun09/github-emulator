@@ -221,6 +221,13 @@ async def connection_data(request: Request):
                 "action download info",
                 "_apis/distributedtask/hubs/{hubName}/plans/{planId}/actionsdownloadinfo",
             ),
+            # TaskResourceIds.PlanEvents: the worker raises JobCompleted here,
+            # and that event is the only place the job's outputs travel.
+            _service_definition(
+                "557624af-b29e-4c20-8ab0-0399d2204f3f",
+                "events",
+                "_apis/distributedtask/hubs/{hubName}/plans/{planId}/events",
+            ),
         ],
     }
     location_service_data.update(
@@ -1299,6 +1306,40 @@ def _wrapped_exception(status: int, type_key: str, message: str) -> JSONResponse
             "eventId": 3000,
         },
     )
+
+
+@router.post("/_apis/distributedtask/hubs/{hub_name}/plans/{plan_id}/events")
+@router.post("/{owner}/{repo}/_apis/distributedtask/hubs/{hub_name}/plans/{plan_id}/events")
+async def dt_raise_plan_event(
+    hub_name: str, plan_id: str, request: Request, db: DbSession,
+):
+    """Record what the worker's JobCompleted event carries: the job's outputs.
+
+    The upstream runner resolves a job's ``outputs:`` itself and sends them
+    only in this event; completion and the result still arrive through the
+    job request. Without this route the outputs were dropped, and every
+    ``needs.<job>.outputs.<name>`` rendered empty. A secret output is left
+    out, as GitHub leaves it out.
+    """
+    job = await _get_job_from_job_token(request, db)
+    body = await request.json()
+    name = body.get("name", body.get("Name", ""))
+    if name != "JobCompleted":
+        return Response(status_code=200)
+    event_job = str(body.get("jobId", body.get("JobId", "")) or "")
+    if event_job and event_job.lower() != _workflow_guid("job", job.id).lower():
+        raise HTTPException(status_code=403, detail="Event is for another job")
+    outputs = body.get("outputs", body.get("Outputs")) or {}
+    resolved = {}
+    for key, value in outputs.items():
+        if isinstance(value, dict):
+            if value.get("isSecret", value.get("IsSecret")):
+                continue
+            value = value.get("value", value.get("Value"))
+        resolved[key] = "" if value is None else str(value)
+    job.outputs = {**(job.outputs or {}), **resolved}
+    await db.commit()
+    return Response(status_code=200)
 
 
 @router.post("/_apis/distributedtask/hubs/{hub_name}/plans/{plan_id}/actionsdownloadinfo")
