@@ -19,6 +19,21 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.api.actions_dispatch import _claim_queued_job
+from app.api.actions_runner_protocol import (
+    _SERVICE_OWNER,
+    EMULATOR_INSTANCE_ID,
+    EMULATOR_USER_ID,
+    TASK_AREA_ID,
+    _agent_json,
+    _context_dictionary,
+    _job_access_token,
+    _service_definition,
+    _template_mapping,
+    _variable,
+    _workflow_guid,
+)
+from app.api.actions_runners import normalise_runner_os
 from app.api.deps import DbSession
 from app.config import settings
 from app.models.actions import (
@@ -39,7 +54,7 @@ from app.services.action_download_service import (
     resolve_local_action_sha,
 )
 from app.services.auth_service import hash_token
-from app.services.job_token_service import issue_job_token, validate_job_token
+from app.services.job_token_service import validate_job_token
 from app.services.workflow_service import check_run_completion, dispatch_ready_jobs
 
 router = APIRouter(tags=["actions-distributed-task"])
@@ -136,24 +151,6 @@ def _request_base(request: Request) -> str:
     return _runner_reachable_base_url(configured)
 
 
-from app.api.actions_dispatch import _claim_queued_job
-from app.api.actions_runners import normalise_runner_os
-from app.api.actions_runner_protocol import (
-    EMULATOR_INSTANCE_ID,
-    EMULATOR_USER_ID,
-    TASK_AREA_ID,
-    _SERVICE_OWNER,
-    _agent_json,
-    _base64url_json,
-    _context_dictionary,
-    _context_value,
-    _job_access_token,
-    _runner_client_id,
-    _service_definition,
-    _template_mapping,
-    _variable,
-    _workflow_guid,
-)
 
 @router.get("/_apis/connectionData")
 @router.get("/{owner}/{repo}/_apis/connectionData")
@@ -1101,7 +1098,7 @@ async def dt_update_timeline(
     job_id: int, request: Request, db: DbSession,
 ):
     """Runner reports step timeline updates."""
-    runner = await _get_runner_from_token(request, db)
+    await _get_runner_from_token(request, db)
     body = await request.json()
 
     result = await db.execute(
@@ -1401,7 +1398,10 @@ async def dt_raise_plan_event(
             value = value.get("value", value.get("Value"))
         resolved[key] = "" if value is None else str(value)
     job.outputs = {**(job.outputs or {}), **resolved}
-    if job.status != "completed":
+    # A job cancelled while it ran is already completed, but its runner is
+    # still busy until this report; _complete_job frees it and keeps the
+    # cancelled conclusion.
+    if job.status != "completed" or job.conclusion == "cancelled":
         runner = (await db.execute(select(Runner).where(Runner.id == job.runner_id))).scalar_one_or_none()
         if runner is None:
             raise HTTPException(status_code=409, detail="Job has no runner to complete it")
@@ -1422,7 +1422,7 @@ async def dt_resolve_action_download_info(
     here: the runner downloads it with the job token as a Basic credential,
     which GitHub would reject and this service can verify.
     """
-    job = await _get_job_from_job_token(request, db)
+    await _get_job_from_job_token(request, db)
     body = await request.json()
     references = body.get("actions") or body.get("Actions") or []
     base = _runner_reachable_base_url(_request_base(request))
