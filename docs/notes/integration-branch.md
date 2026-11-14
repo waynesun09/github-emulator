@@ -41,6 +41,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 17 | fix-close-issue-state-reason | 197ee90 | GraphQL `stateReason` as an enum on close and on the issue |
 | 18 | fix-collaborator-permission-none | a49e162 | An org member with no role on a public org repo has read permission, not none |
 | 19 | fix-review-own-pull-request | 6cc9aa3 | The PR author's APPROVE or REQUEST_CHANGES gets 422; review create returns 200; POST submit is accepted |
+| 25 | fix-emulator-hosted-actions | 1d30e6f | `uses: owner/repo@ref` resolves against a repository on the emulator first (as GHES), archive built with `git archive`; upstream otherwise |
 | 24 | fix-reusable-caller-needs | bb982e9 | A job can need a reusable-workflow caller and read `needs.<caller>.outputs` and `.result` (stacked on 5) |
 | 22 | fix-index-outside-write-lock | fb63d3e | Indexing a pushed repo reads the tree before taking SQLite's write lock (a large push made other writes 503) |
 | 23 | bt-f5-e2e (one commit) | 9234221 | Python runner runs bash steps with the `bash` on PATH, as actions/runner does (bt-f5) |
