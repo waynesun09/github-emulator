@@ -1,0 +1,74 @@
+name: self-contained smoke
+
+# Start the emulator and its runner inside this job, execute a real workflow
+# run on them, and record what the stack costs: start-up time, peak memory
+# and CPU of the two processes.
+on:
+  push:
+    branches: [ci-self-contained]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the emulator's Python dependencies
+        id: deps
+        run: |
+          start=$(date +%s.%N)
+          python3 -m venv /tmp/emu-venv
+          /tmp/emu-venv/bin/pip install -q -r requirements.txt
+          echo "seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$GITHUB_OUTPUT"
+
+      - name: Start the stack
+        id: start
+        env:
+          CI_STACK_PYTHON: /tmp/emu-venv/bin/python
+          CI_STACK_DIR: /tmp/ci-stack
+        run: |
+          start=$(date +%s.%N)
+          scripts/ci-stack.sh start
+          echo "seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$GITHUB_OUTPUT"
+
+      - name: Run a workflow on the emulator
+        id: smoke
+        run: |
+          start=$(date +%s.%N)
+          scripts/ci-workflow-smoke.sh
+          echo "seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$GITHUB_OUTPUT"
+
+      - name: Record cost
+        if: always()
+        env:
+          CI_STACK_DIR: /tmp/ci-stack
+        run: |
+          {
+            echo "### Stack cost on $(nproc) vCPU, $(free -g | awk '/Mem:/ {print $2}') GiB"
+            echo
+            echo "| step | seconds |"
+            echo "| --- | --- |"
+            echo "| pip install | ${{ steps.deps.outputs.seconds }} |"
+            echo "| stack start (until the API answers) | ${{ steps.start.outputs.seconds }} |"
+            echo "| smoke (org, repo, push, dispatch, 2-job run) | ${{ steps.smoke.outputs.seconds }} |"
+            echo
+            echo '```'
+            scripts/ci-stack.sh stats
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Stack logs
+        if: failure()
+        run: tail -n 200 /tmp/ci-stack/emulator.log /tmp/ci-stack/runner.log
+
+      - name: Stop the stack
+        if: always()
+        env:
+          CI_STACK_DIR: /tmp/ci-stack
+        run: scripts/ci-stack.sh stop
