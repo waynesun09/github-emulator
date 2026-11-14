@@ -106,6 +106,9 @@ jobs:
           # The shape a fullsend job needs: https, a host name, and the CA in
           # the system store, which is all actions/runner (.NET) reads.
           - {name: upstream-tls, kind: upstream, port: "443", tls: "1", host: ghemu.localhost}
+          # The same, with the host name resolving to the VM's own address
+          # rather than loopback, so a sandbox supervisor can reach it too.
+          - {name: upstream-tls-vm-ip, kind: upstream, port: "443", tls: "1", host: ghemu.localhost, localhost_dns: "1"}
     env:
       CI_STACK_PYTHON: /tmp/emu-venv/bin/python
       CI_STACK_DIR: /tmp/ci-stack
@@ -115,6 +118,7 @@ jobs:
       CI_STACK_TLS: ${{ matrix.tls }}
       CI_STACK_HOST: ${{ matrix.host }}
       CI_STACK_SYSTEM_TRUST: ${{ matrix.tls }}
+      CI_STACK_LOCALHOST_DNS: ${{ matrix.localhost_dns || '0' }}
       PROBE_WAIT_SECONDS: "180"
       PROBE_LOG_DIR: /tmp/ci-stack/probe-logs
     steps:
@@ -134,6 +138,35 @@ jobs:
           start=$(date +%s.%N)
           scripts/ci-stack.sh start
           echo "start_seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$GITHUB_ENV"
+      - name: Check every client resolves the host to the VM address
+        if: matrix.localhost_dns == '1'
+        run: |
+          ip="$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+          got_glibc="$(getent ahostsv4 "$CI_STACK_HOST" | awk 'NR == 1 {print $1}')"
+          got_dns="$(dig +short "$CI_STACK_HOST" A | tail -1)"
+          got_node="$(node -e 'require("dns").lookup(process.argv[1], {family: 4}, (e, a) => console.log(e ? e.code : a))' "$CI_STACK_HOST")"
+          got_dotnet="$(pwsh -NoProfile -Command "([System.Net.Dns]::GetHostAddresses('$CI_STACK_HOST') | Where-Object AddressFamily -eq 'InterNetwork' | Select-Object -First 1).IPAddressToString")"
+          got_container="$(podman run --rm --network host docker.io/library/alpine:3.20 nslookup -type=a "$CI_STACK_HOST" 2>/dev/null | awk '/^Address: /{print $2}' | tail -1)"
+          tls="$(curl -s -o /dev/null -w '%{http_code} %{remote_ip}' --cacert "$CI_STACK_DIR/tls/ca.pem" "https://$CI_STACK_HOST/api/v3")"
+          github="$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/zen)"
+          {
+            echo "### ${{ matrix.name }}: $CI_STACK_HOST resolution (VM address $ip)"
+            echo
+            echo "| client | answer |"
+            echo "|---|---|"
+            echo "| glibc (getent) | $got_glibc |"
+            echo "| DNS (/etc/resolv.conf) | $got_dns |"
+            echo "| Node dns.lookup | $got_node |"
+            echo "| .NET Dns.GetHostAddresses (pwsh) | $got_dotnet |"
+            echo "| host-network container | $got_container |"
+            echo "| https://$CI_STACK_HOST/api/v3 | $tls |"
+            echo "| https://api.github.com/zen | $github |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          for got in "$got_glibc" "$got_dns" "$got_node" "$got_dotnet" "$got_container"; do
+            [ "$got" = "$ip" ] || { echo "::error::$CI_STACK_HOST resolved to '$got', not $ip"; exit 1; }
+          done
+          [ "${tls%% *}" = 200 ] && [ "${tls##* }" = "$ip" ] || { echo "::error::https to $CI_STACK_HOST: $tls"; exit 1; }
+          [ "$github" = 200 ] || { echo "::error::api.github.com: $github"; exit 1; }
       - name: Probe
         run: |
           {
