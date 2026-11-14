@@ -40,10 +40,11 @@ outputs:
 runs:
   using: composite
   steps:
+    # No uv cache: its key is a glob over the consumer's workspace, which does
+    # not hold this action's requirements.txt, and a cold install is ~seconds.
     - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
       with:
-        enable-cache: true
-        cache-dependency-glob: ${{ github.action_path }}/../../../requirements.txt
+        enable-cache: false
 
     - name: Install the emulator
       shell: bash
