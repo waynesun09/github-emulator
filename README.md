@@ -57,6 +57,8 @@ make vm-deploy
 # The server is now reachable at https://ghemu.local
 ```
 
+To run the emulator inside a CI job, see [Run in CI](docs/guides/run-in-ci.md).
+
 ## Development Setup
 
 ```bash
