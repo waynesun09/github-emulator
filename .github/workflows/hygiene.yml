@@ -33,11 +33,22 @@ jobs:
         run: npm --prefix src/frontend ci --no-audit --no-fund
       - name: Install pre-commit
         run: python -m pip install --quiet "pre-commit==4.7.0"
+      # The change is what a pull request adds to its base, or what a push
+      # adds to the commit it replaced. A new branch, or a force-push that
+      # dropped that commit, falls back to the merge base with main. Linting
+      # the change rather than the branch keeps a long-lived branch from
+      # owing every finding in every file it has ever touched.
       - name: Run the hooks on the files this change touches
         env:
-          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          base="${BASE_REF:-$(git merge-base origin/main HEAD)}"
+          base="$PR_BASE"
+          if [ -z "$base" ] && [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ] \
+            && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+            base="$PUSH_BEFORE"
+          fi
+          base="${base:-$(git merge-base origin/main HEAD)}"
           echo "checking $base..HEAD"
           pre-commit run --show-diff-on-failure --color=always --from-ref "$base" --to-ref HEAD
 
