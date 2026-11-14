@@ -30,14 +30,17 @@
 #                   (Debian/Ubuntu). actions/runner (.NET) reads only that.
 #   CI_STACK_LOCALHOST_DNS  1 to make CI_STACK_HOST, which must end in
 #                   .localhost, resolve to this machine's own address instead
-#                   of loopback, for every client: the runner and its steps
-#                   (glibc reads /etc/hosts) and a host-network container that
-#                   asks DNS directly (an OpenShell sandbox supervisor, whose
-#                   policy DNS refuses loopback answers). systemd-resolved
-#                   always answers *.localhost with loopback, even over an
-#                   /etc/hosts entry, so a dnsmasq on 127.0.0.2 answers this
-#                   one name (and its subdomains) and forwards everything else
-#                   to the previous resolver; /etc/resolv.conf points at it.
+#                   of loopback, for every client: the runner and its steps,
+#                   and a host-network container that asks DNS directly (an
+#                   OpenShell sandbox supervisor, whose policy DNS refuses
+#                   loopback answers). systemd-resolved always answers
+#                   *.localhost with loopback, so a dnsmasq on 127.0.0.2
+#                   answers this one name (and its subdomains) and forwards
+#                   everything else to the previous resolver;
+#                   /etc/resolv.conf points at it. Deliberately no
+#                   /etc/hosts line: podman copies that file into every
+#                   container, and a sandbox must resolve the name through
+#                   OpenShell's policy DNS, not from the file.
 #                   Other names resolve as before. Linux only (sudo); a no-op
 #                   elsewhere. Implies CI_STACK_BIND=0.0.0.0 unless that is set.
 #                   `stop` does not undo it: the VM is discarded after the job.
@@ -122,12 +125,14 @@ localhost_dns() {
     echo "CI_STACK_LOCALHOST_DNS: could not find this machine's address" >&2
     exit 1
   fi
-  # glibc (files before dns): one line for HOST, replaced if it changed.
-  if grep -qE "^[^#]*[[:space:]]$HOST([[:space:]]|\$)" /etc/hosts; then
-    sudo sed -i -E "/[[:space:]]$HOST([[:space:]]|\$)/d" /etc/hosts
-  fi
-  echo "$ip $HOST" | sudo tee -a /etc/hosts >/dev/null
-  # Everything that asks DNS directly. Keep the first resolver seen as the
+  # No /etc/hosts line: podman copies the host's /etc/hosts into every
+  # container, so an OpenShell sandbox would resolve HOST from it to this
+  # machine's address and dial it directly, which its network policy
+  # refuses ("connect: permission denied"), instead of asking policy DNS
+  # and going through the proxy. glibc ("files dns") still gets HOST from
+  # the dnsmasq below. Remove a line an earlier version left.
+  sudo sed -i -E "/[[:space:]]$HOST([[:space:]]|\$)/d" /etc/hosts
+  # Everything that asks DNS. Keep the first resolver seen as the
   # upstream, so a second start does not forward dnsmasq to itself.
   if [ ! -f "$DIR/resolv.conf.orig" ]; then
     cp -L /etc/resolv.conf "$DIR/resolv.conf.orig"
@@ -154,8 +159,6 @@ localhost_dns() {
       exit 2
     fi
     ip -4 -o addr show | grep -q " $addr/" || sudo ip addr add "$addr/32" dev lo
-    sudo sed -i -E "/[[:space:]]$name([[:space:]]|\$)/d" /etc/hosts
-    echo "$addr $name" | sudo tee -a /etc/hosts >/dev/null
     extra+=(--address="/$name/$addr")
     echo "$name -> $addr"
   done
