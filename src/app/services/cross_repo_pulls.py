@@ -82,6 +82,33 @@ async def resolve_fork_for_owner(
     return None
 
 
+async def fetch_branch_objects(base: Repository, head: Repository, branch: str) -> str | None:
+    """Copy the objects of ``head``'s ``branch`` into ``base`` without a ref,
+    so ``base`` can compare against it. Returns the branch's commit, or None.
+
+    GitHub keeps a fork network's objects together; the emulator keeps one
+    bare repository per fork, so a comparison with a fork branch fetches it.
+    """
+    if not (base.disk_path and head.disk_path and os.path.isdir(base.disk_path) and os.path.isdir(head.disk_path)):
+        return None
+    process = await asyncio.create_subprocess_exec(
+        "git", "--git-dir", head.disk_path, "rev-parse", "--verify", "--quiet",
+        f"refs/heads/{branch}^{{commit}}",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    out, _ = await process.communicate()
+    sha = out.decode().strip()
+    if process.returncode != 0 or not sha:
+        return None
+    process = await asyncio.create_subprocess_exec(
+        "git", "--git-dir", base.disk_path, "fetch", "--no-tags", "--quiet",
+        "--no-write-fetch-head", head.disk_path, f"refs/heads/{branch}",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await process.communicate()
+    return sha if process.returncode == 0 else None
+
+
 async def sync_head_ref(
     base: Repository, head: Repository, branch: str, number: int
 ) -> str | None:
