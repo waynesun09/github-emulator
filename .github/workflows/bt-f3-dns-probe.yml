@@ -1,0 +1,35 @@
+name: dns-probe
+on:
+  push:
+    branches: [bt-f3-dns-probe]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: How *.localhost resolves on the hosted VM
+        shell: bash
+        run: |
+          set -u
+          ip="$(hostname -I | awk '{print $1}')"
+          echo "vm ip: $ip"
+          echo "== /etc/resolv.conf"; grep -v '^#' /etc/resolv.conf
+          echo "== nsswitch hosts: $(grep '^hosts' /etc/nsswitch.conf)"
+          show() {
+            echo "-- $1"
+            echo "   getent: $(getent ahostsv4 "$1" | head -1)"
+            echo "   resolvectl: $(resolvectl query "$1" 2>&1 | head -1)"
+            echo "   dig @127.0.0.53: $(dig +short @127.0.0.53 "$1" A | tr '\n' ' ')"
+          }
+          echo "== before"; show ghemu.localhost
+          echo "$ip ghemu.localhost" | sudo tee -a /etc/hosts >/dev/null
+          echo "== after /etc/hosts entry"; show ghemu.localhost
+          echo "== container with host network (what an OpenShell supervisor sees)"
+          podman run --rm --network host docker.io/library/alpine:3.20 sh -c 'grep nameserver /etc/resolv.conf; nslookup -type=a ghemu.localhost 2>&1 | tail -3'
+          echo "== with a resolved drop-in that disables the stub's synthesis is not possible; try a dnsmasq answer instead"
+          sudo apt-get -qq install -y dnsmasq-base >/dev/null 2>&1 || true
+          sudo dnsmasq --no-daemon --port=5353 --listen-address=127.0.0.1 --bind-interfaces --no-resolv --address=/ghemu.localhost/"$ip" --log-queries >/tmp/dnsmasq.log 2>&1 &
+          sleep 1
+          echo "   dig @127.0.0.1 -p 5353: $(dig +short @127.0.0.1 -p 5353 ghemu.localhost A | tr '\n' ' ')"
+          sudo pkill dnsmasq || true
