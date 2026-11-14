@@ -1000,10 +1000,52 @@ def _topo_sort(jobs: list[dict]) -> list[dict]:
     return result
 
 
+# The default-branch workflows each repository's table was last synced from,
+# by repository id: (disk path, default branch, ``.github/workflows`` tree id).
+# Lookups skip the sync while the key is unchanged. Every sync_workflows_to_db
+# call bumps the repository's generation and drops its entry, so a sync from
+# any other path (a push to another branch adds that branch's workflows) makes
+# the next lookup reconcile against the default branch again. The emulator
+# serves from one process, so an in-process cache sees every sync.
+_synced_workflows: dict[int, tuple] = {}
+_sync_generation: dict[int, int] = {}
+
+
+async def _default_workflows_key(repository: Repository) -> tuple:
+    """What the default branch's workflow inventory depends on."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", "rev-parse", "--verify", "--quiet", "HEAD:.github/workflows",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={"GIT_DIR": repository.disk_path or ""},
+    )
+    stdout, _ = await proc.communicate()
+    tree = stdout.decode().strip() if proc.returncode == 0 else ""
+    return (repository.disk_path, repository.default_branch, tree)
+
+
+async def ensure_workflows_synced(db: AsyncSession, repository: Repository) -> None:
+    """Sync the workflow table from the default branch, and commit, unless
+    neither the default branch nor its workflow files changed since the
+    last sync."""
+    key = await _default_workflows_key(repository)
+    if _synced_workflows.get(repository.id) == key:
+        return
+    generation = _sync_generation.get(repository.id, 0) + 1
+    await sync_workflows_to_db(db, repository, "HEAD")
+    await db.commit()
+    # Another sync while this one ran may have changed the table; leave the
+    # entry unset so the next lookup syncs again.
+    if _sync_generation.get(repository.id, 0) == generation:
+        _synced_workflows[repository.id] = key
+
+
 async def sync_workflows_to_db(
     db: AsyncSession, repository: Repository, ref: str = "HEAD"
 ) -> list[Workflow]:
     """Upsert Workflow rows from on-disk workflow files."""
+    _sync_generation[repository.id] = _sync_generation.get(repository.id, 0) + 1
+    _synced_workflows.pop(repository.id, None)
     detected = await detect_workflows(repository.disk_path, ref)
 
     result = await db.execute(
