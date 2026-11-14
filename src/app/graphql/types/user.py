@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import Annotated, Optional
 
 import strawberry
-from strawberry.types import Info
 from sqlalchemy import select
+from strawberry.types import Info
 
 from app.graphql.connections import Connection, build_connection
 from app.graphql.types.enums import (
@@ -84,8 +84,8 @@ class GitHubUser(Actor):
         owner_affiliations: Optional[list[RepositoryAffiliation]] = None,
         order_by: Optional[RepositoryOrder] = None,
     ) -> Connection[Annotated["Repository", strawberry.lazy("app.graphql.types.repository")]]:
-        from app.models.repository import Repository as RepoModel
         from app.graphql.types.repository import repository_from_model
+        from app.models.repository import Repository as RepoModel
 
         db = info.context["db"]
         query = select(RepoModel).where(RepoModel.owner_id == self.database_id)

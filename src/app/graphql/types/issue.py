@@ -4,13 +4,13 @@ from datetime import datetime
 from typing import Annotated, Optional
 
 import strawberry
+from sqlalchemy import func as sa_func
+from sqlalchemy import select
 from strawberry.types import Info
-from sqlalchemy import select, func as sa_func
 
 from app.graphql.connections import Connection, build_connection
-from app.graphql.types.minimizable import Minimizable
-from app.graphql.types.user import Actor, GitHubUser, _node_id, actor_from_model, user_from_model
 from app.graphql.types.enums import IssueState, IssueStateReason
+from app.graphql.types.minimizable import Minimizable
 from app.graphql.types.repository import (
     Label,
     MilestoneType,
@@ -18,12 +18,13 @@ from app.graphql.types.repository import (
     milestone_from_model,
 )
 from app.graphql.types.stubs import (
-    ReactionGroup,
     STANDARD_REACTION_GROUPS,
     ProjectCardStub,
     ProjectV2Stub,
+    ReactionGroup,
     empty_connection,
 )
+from app.graphql.types.user import Actor, GitHubUser, _node_id, actor_from_model, user_from_model
 
 
 @strawberry.type
@@ -164,8 +165,8 @@ class Issue:
         last: Optional[int] = None,
         before: Optional[str] = None,
     ) -> Connection[Label]:
-        from app.models.label import Label as LabelModel
         from app.models.issue import IssueLabel
+        from app.models.label import Label as LabelModel
 
         db = info.context["db"]
         result = await db.execute(
@@ -189,8 +190,8 @@ class Issue:
         last: Optional[int] = None,
         before: Optional[str] = None,
     ) -> Connection[GitHubUser]:
-        from app.models.user import User
         from app.models.issue import IssueAssignee
+        from app.models.user import User
 
         db = info.context["db"]
         result = await db.execute(
