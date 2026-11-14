@@ -22,9 +22,12 @@
 #                   upstream (the real actions/runner, Linux x64)
 #   CI_STACK_TLS    1 to serve https from uvicorn itself, with a CA and a
 #                   certificate for CI_STACK_HOST made per run under
-#                   $CI_STACK_DIR/tls. Clients must trust tls/ca.pem; the
-#                   Python runner is pointed at it. Needed when a client
-#                   insists on https (gh, the OpenShell egress proxy).
+#                   $CI_STACK_DIR/tls. Clients must trust tls/ca.pem;
+#                   tls/bundle.pem is the public roots plus it, for clients
+#                   that also reach github.com. Runners get both. Needed when
+#                   a client insists on https (gh, the OpenShell egress proxy).
+#   CI_STACK_SYSTEM_TRUST  1 to add the CA to the system store with sudo
+#                   (Debian/Ubuntu). actions/runner (.NET) reads only that.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -62,6 +65,21 @@ make_tls() {
   openssl x509 -req -in "$t/server.csr" -CA "$CA" -CAkey "$t/ca-key.pem" \
     -CAcreateserial -days 2 -extfile "$t/ext.cnf" -out "$t/server.pem" 2>/dev/null
   chmod 600 "$t"/*-key.pem
+  # SSL_CERT_FILE and GIT_SSL_CAINFO replace the default roots rather than
+  # adding to them, so give those the public roots plus this CA.
+  cat "$("$PY" -c 'import certifi; print(certifi.where())')" "$CA" >"$t/bundle.pem"
+  if [ "${CI_STACK_SYSTEM_TRUST:-0}" = 1 ]; then
+    sudo cp "$CA" /usr/local/share/ca-certificates/ci-stack.crt
+    sudo update-ca-certificates >/dev/null
+  fi
+}
+
+# What a runner and the steps it starts need to trust the emulator.
+export_trust() {
+  if [ "$TLS" = 1 ]; then
+    export SSL_CERT_FILE="$DIR/tls/bundle.pem" GIT_SSL_CAINFO="$DIR/tls/bundle.pem" \
+      NODE_EXTRA_CA_CERTS="$CA"
+  fi
 }
 
 start() {
@@ -104,16 +122,13 @@ start() {
   done
   echo "emulator $BASE (pid $(cat "$DIR/emulator.pid")), $RUNNERS $KIND runner(s)"
   if [ "$TLS" = 1 ]; then
-    echo "trust $CA: SSL_CERT_FILE / GIT_SSL_CAINFO, or the system store for actions/runner"
+    echo "trust $CA (CURL_CA_BUNDLE/NODE_EXTRA_CA_CERTS) or $DIR/tls/bundle.pem (SSL_CERT_FILE/GIT_SSL_CAINFO)"
   fi
 }
 
 start_python_runner() {
   local i="$1"
-  if [ "$TLS" = 1 ]; then
-    # httpx in runner.py and git in its checkout step read these.
-    export SSL_CERT_FILE="$CA" GIT_SSL_CAINFO="$CA"
-  fi
+  export_trust
   GITHUB_EMULATOR_URL="$BASE" \
   GITHUB_EMULATOR_TOKEN="$ADMIN_TOKEN" \
   RUNNER_SCOPE=site \
@@ -136,6 +151,7 @@ start_upstream_runner() {
   fi
   mkdir -p "$home"
   tar -xzf "$tarball" -C "$home"
+  export_trust
   local reg
   reg="$(curl -sf -X POST -H "Authorization: token $ADMIN_TOKEN" \
     "$BASE/api/v3/enterprises/$enterprise/actions/runners/registration-token" | jq -r .token)"

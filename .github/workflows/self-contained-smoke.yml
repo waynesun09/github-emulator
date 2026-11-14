@@ -97,26 +97,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [python, upstream]
+        include:
+          - {name: python, kind: python, port: "8000", tls: "0", host: 127.0.0.1}
+          # actions/runner drops the port from some emulator URLs and dials
+          # the scheme's default ("Connection refused (127.0.0.1:80)"), so
+          # the emulator itself serves on 80, or 443 with TLS.
+          - {name: upstream, kind: upstream, port: "80", tls: "0", host: 127.0.0.1}
+          # The shape a fullsend job needs: https, a host name, and the CA in
+          # the system store, which is all actions/runner (.NET) reads.
+          - {name: upstream-tls, kind: upstream, port: "443", tls: "1", host: ghemu.localhost}
     env:
       CI_STACK_PYTHON: /tmp/emu-venv/bin/python
       CI_STACK_DIR: /tmp/ci-stack
       CI_STACK_RUNNERS: "2"
-      CI_STACK_RUNNER_KIND: ${{ matrix.runner }}
+      CI_STACK_RUNNER_KIND: ${{ matrix.kind }}
+      CI_STACK_PORT: ${{ matrix.port }}
+      CI_STACK_TLS: ${{ matrix.tls }}
+      CI_STACK_HOST: ${{ matrix.host }}
+      CI_STACK_SYSTEM_TRUST: ${{ matrix.tls }}
       PROBE_WAIT_SECONDS: "180"
       PROBE_LOG_DIR: /tmp/ci-stack/probe-logs
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m venv /tmp/emu-venv && /tmp/emu-venv/bin/pip install -q -r requirements.txt
-      # actions/runner drops the port from some emulator URLs and dials :80
-      # (registration fails with "Connection refused (127.0.0.1:80)"), so
-      # serve the emulator itself on 80 instead of adding a proxy process.
-      - name: Serve on port 80 for the upstream runner
-        if: matrix.runner == 'upstream'
+      - name: Allow ports below 1024
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+      - name: Point the probe at the stack
         run: |
-          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
-          echo "CI_STACK_PORT=80" >> "$GITHUB_ENV"
-          echo "EMU=http://127.0.0.1:80" >> "$GITHUB_ENV"
+          scheme=http; [ "$CI_STACK_TLS" = 1 ] && scheme=https
+          echo "EMU=$scheme://$CI_STACK_HOST:$CI_STACK_PORT" >> "$GITHUB_ENV"
+          [ "$CI_STACK_TLS" = 1 ] && echo "EMU_CA=$CI_STACK_DIR/tls/ca.pem" >> "$GITHUB_ENV"
+          # Record whether *.localhost resolves without help (systemd-resolved).
+          getent hosts "$CI_STACK_HOST" || echo "$CI_STACK_HOST does not resolve"
       - name: Start the stack
         run: |
           start=$(date +%s.%N)
@@ -125,7 +137,7 @@ jobs:
       - name: Probe
         run: |
           {
-            echo "### ${{ matrix.runner }} runner x2 (stack start ${start_seconds}s)"
+            echo "### ${{ matrix.name }} runner x2 (stack start ${start_seconds}s)"
             echo
             scripts/ci-capability-probe.sh
             echo
@@ -140,7 +152,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: capabilities-${{ matrix.runner }}
+          name: capabilities-${{ matrix.name }}
           path: |
             /tmp/ci-stack/*.log
             /tmp/ci-stack/probe-logs
