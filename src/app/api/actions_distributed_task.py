@@ -598,6 +598,10 @@ def _job_request_message(
             "system.github.ref": _variable(ref),
             "system.github.sha": _variable(sha),
             "system.github.workflow": _variable(workflow_name),
+            # The runner exports this as ACTIONS_RESULTS_URL, where
+            # upload-artifact@v4+ and download-artifact@v4+ find the results
+            # service (src/app/api/actions_results.py).
+            "system.github.results_endpoint": _variable(f"{runner_base_url}/"),
         },
         "contextData": {
             # The runner expands an expression only when every context the

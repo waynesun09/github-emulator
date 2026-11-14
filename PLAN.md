@@ -125,3 +125,4 @@ Actions visibility and runner evaluation.
 - `docs/decisions/ADR-0001-actions-runner-strategy.md`
 - `docs/decisions/ADR-0002-artifact-storage-on-disk.md`
 - `docs/decisions/ADR-0003-org-memberships-are-active-on-add.md`
+- `docs/decisions/ADR-0004-actions-results-service-for-artifacts.md`
