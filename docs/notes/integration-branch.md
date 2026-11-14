@@ -40,6 +40,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 25 | fix-emulator-hosted-actions | 1d30e6f | `uses: owner/repo@ref` resolves against a repository on the emulator first (as GHES), archive built with `git archive`; upstream otherwise |
 | 26 | fix-job-token-verification | d7f5440 | Job-server routes authenticate the job token through `validate_job_token` (signature, issuer, lifetime) and answer 401 when it fails |
 | 27 | chore-repo-hygiene | 58335de | pre-commit (ruff, gitleaks, shellcheck, actionlint, zizmor, frontend eslint/prettier), `.gitleaks.toml`, committed `uv.lock`, hygiene CI (hooks on the change, full-history secrets, pip-audit, npm audit, frontend checks), Dependabot, pinned Caddy, runner TLS verification by default |
+| 28 | fix-runner-job-cancellation | 8c2545c | A real runner gets a `JobCancellation` message when its job is cancelled (for example superseded under `cancel-in-progress`); its later report keeps `cancelled`. On this branch, d27a3b7 also frees the runner from the plan-events report |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
