@@ -141,6 +141,21 @@ jobs:
           script: console.log("MARK-githubcom")
 EOF
 
+# gh with the job token reaches the emulator, not api.github.com: the repo
+# exists only on the emulator. gh speaks only https, so this needs TLS.
+wf gh-cli <<'EOF'
+on: workflow_dispatch
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=$(gh api "repos/$GITHUB_REPOSITORY" --jq .full_name)
+          [ "$name" = "$GITHUB_REPOSITORY" ] && echo "MARK-gh-cli"
+EOF
+
 # A cross-repository call to a repository the emulator does not hold.
 wf reusable-missing <<'EOF'
 on: workflow_dispatch
@@ -229,7 +244,7 @@ EOF
 
 git_push_tree "$REPO" "$S"
 
-FEATURES=(composite reusable reusable-missing emuhost githubcom container oidc artifacts artifacts-pinned concurrency)
+FEATURES=(composite reusable reusable-missing emuhost githubcom gh-cli container oidc artifacts artifacts-pinned concurrency)
 
 # Features the emulator refuses on purpose, and the message that says so. A
 # run that fails with it is the intended result, not a gap.
