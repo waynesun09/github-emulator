@@ -601,6 +601,10 @@ def _job_request_message(
             _job_step_message(job, step, oidc_environment)
             for step in (job.steps or [])
         ],
+        # The job's `outputs:`, which the runner evaluates against its steps
+        # when the job ends and reports in JobCompleted. Without them it has
+        # nothing to report, and needs.<job>.outputs stays empty.
+        **({"jobOutputs": _template_mapping(job.outputs_config)} if job.outputs_config else {}),
         "variables": {
             "system.github.token": _variable(access_token, is_secret=True),
             "system.github.job": _variable(job.name),
