@@ -41,6 +41,12 @@
 #                   Other names resolve as before. Linux only (sudo); a no-op
 #                   elsewhere. Implies CI_STACK_BIND=0.0.0.0 unless that is set.
 #                   `stop` does not undo it: the VM is discarded after the job.
+#   CI_STACK_DNS_EXTRA  with CI_STACK_LOCALHOST_DNS: space-separated
+#                   name=ip pairs for more services on this machine, e.g.
+#                   "gw.ghemu.localhost=10.254.0.1" for a second https
+#                   service that needs its own port 443. Each name must be a
+#                   subdomain of CI_STACK_HOST and each ip a non-loopback
+#                   IPv4 address; one not yet on this machine is added to lo.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -134,8 +140,28 @@ localhost_dns() {
     sudo kill "$(cat "$DIR/dnsmasq.pid")"
     sleep 0.5
   fi
+  # Extra names (CI_STACK_DNS_EXTRA): subdomains of HOST only, so the knob
+  # cannot redirect an unrelated name, and never loopback, which an
+  # OpenShell supervisor refuses. dnsmasq answers the most specific match.
+  local extra=() pair name addr
+  for pair in ${CI_STACK_DNS_EXTRA:-}; do
+    name="${pair%%=*}" addr="${pair#*=}"
+    case "$name" in
+      *."$HOST") ;;
+      *) echo "CI_STACK_DNS_EXTRA: $name is not a subdomain of $HOST" >&2; exit 2 ;;
+    esac
+    if ! [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$addr" == 127.* ]]; then
+      echo "CI_STACK_DNS_EXTRA: $addr is not a non-loopback IPv4 address" >&2
+      exit 2
+    fi
+    ip -4 -o addr show | grep -q " $addr/" || sudo ip addr add "$addr/32" dev lo
+    sudo sed -i -E "/[[:space:]]$name([[:space:]]|\$)/d" /etc/hosts
+    echo "$addr $name" | sudo tee -a /etc/hosts >/dev/null
+    extra+=(--address="/$name/$addr")
+    echo "$name -> $addr"
+  done
   sudo dnsmasq --listen-address=127.0.0.2 --bind-interfaces --port=53 --no-resolv --no-hosts \
-    --server="$upstream" --address="/$HOST/$ip" --pid-file="$DIR/dnsmasq.pid"
+    --server="$upstream" --address="/$HOST/$ip" ${extra[@]+"${extra[@]}"} --pid-file="$DIR/dnsmasq.pid"
   # /etc/resolv.conf is a symlink into systemd-resolved's runtime directory on
   # Ubuntu; replace the link, not the file resolved owns.
   sudo rm -f /etc/resolv.conf
