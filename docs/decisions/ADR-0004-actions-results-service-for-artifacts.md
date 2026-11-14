@@ -8,7 +8,8 @@ Accepted
 
 `actions/upload-artifact` and `actions/download-artifact` from v4 on (through
 `@actions/artifact` v2+) do not use the REST artifact API from ADR-0002. They
-use a Twirp service at `ACTIONS_RESULTS_URL`:
+use a Twirp service (a small RPC protocol over HTTP with JSON bodies) at
+`ACTIONS_RESULTS_URL`:
 
 1. `CreateArtifact` returns a signed upload URL.
 2. The action uploads the zip to that URL as an Azure block blob.
@@ -35,8 +36,8 @@ server side.
   - They authenticate with the job token, through `validate_job_token`.
   - They refuse backend ids that differ from the token's.
 - Add the `Actions.Results:<run_id>:<job_id>` scope to the job token.
-- Send `system.github.results_endpoint` in the job message. The runner exports
-  it as `ACTIONS_RESULTS_URL`.
+- Send `ResultsServiceUrl` in the job message's `SystemVssConnection` endpoint
+  data. The runner exports it to node actions as `ACTIONS_RESULTS_URL`.
 - Store uploads as follows:
   - A pending upload is a directory under `DATA_DIR/artifact-uploads/`.
   - Block uploads (`comp=block`, `comp=blocklist`) and a single Put Blob write
