@@ -45,6 +45,12 @@ inputs:
       SHA-256 of that release's linux-x64 tarball, as GitHub publishes it.
       Required with a runner-version other than the default.
     default: ""
+  runner-env:
+    description: >
+      Extra environment for every runner and the jobs it runs: NAME=VALUE
+      lines, one per line. Use it for a service shared by the runners on
+      this VM, so parallel jobs do not each set it up.
+    default: ""
   state-dir:
     description: SQLite file, git repositories, logs and pid files.
     default: ${{ runner.temp }}/github-emulator
@@ -107,6 +113,7 @@ runs:
         CI_STACK_RUNNER_KIND: ${{ inputs.runner-kind }}
         CI_STACK_UPSTREAM_RUNNER_VERSION: ${{ inputs.runner-version }}
         CI_STACK_UPSTREAM_RUNNER_SHA256: ${{ inputs.runner-sha256 }}
+        CI_STACK_RUNNER_ENV: ${{ inputs.runner-env }}
       run: |
         "$ROOT/scripts/ci-stack.sh" start
         scheme=http

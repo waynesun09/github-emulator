@@ -158,6 +158,20 @@ jobs:
           host: ${{ matrix.host }}
           localhost-dns: ${{ matrix.dns }}
           runners: "2"
+          runner-env: |
+            SMOKE_RUNNER_ENV=a,b c
+      - name: Check every runner got runner-env
+        env:
+          STATE: ${{ runner.temp }}/github-emulator
+          KIND: ${{ matrix.kind }}
+        run: |
+          for i in 1 2; do
+            if [ "$KIND" = upstream ]; then
+              grep -qxF 'SMOKE_RUNNER_ENV=a,b c' "$STATE/runner-$i/.env"
+            else
+              tr '\0' '\n' <"/proc/$(cat "$STATE/runner-$i.pid")/environ" | grep -qxF 'SMOKE_RUNNER_ENV=a,b c'
+            fi
+          done
       - name: Run a workflow on the emulator
         env:
           EMU: ${{ steps.emu.outputs.url }}

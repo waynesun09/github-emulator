@@ -50,6 +50,12 @@
 #                   service that needs its own port 443. Each name must be a
 #                   subdomain of CI_STACK_HOST and each ip a non-loopback
 #                   IPv4 address; one not yet on this machine is added to lo.
+#   CI_STACK_RUNNER_ENV  extra environment for every runner and the jobs it
+#                   runs: NAME=VALUE lines, one per line (a value may hold
+#                   commas and spaces), e.g. a gateway shared by the runners
+#                   on this machine. Blank lines are skipped. The upstream
+#                   runner gets them in its .env, so the outer-environment
+#                   stripping below cannot drop them.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -180,7 +186,24 @@ export_trust() {
   fi
 }
 
+# CI_STACK_RUNNER_ENV, checked once before anything starts.
+RUNNER_ENV=()
+read_runner_env() {
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    [ -n "${line//[[:space:]]/}" ] || continue
+    if ! [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      # Name only: a value may be a secret.
+      echo "CI_STACK_RUNNER_ENV: each line must be NAME=VALUE; got one starting '${line%%=*}'" >&2
+      exit 2
+    fi
+    RUNNER_ENV+=("$line")
+  done <<<"${CI_STACK_RUNNER_ENV:-}"
+}
+
 start() {
+  read_runner_env
   mkdir -p "$DIR/data" "$DIR/runner"
   localhost_dns
   local tls_args=() curl_ca=()
@@ -234,7 +257,7 @@ start_python_runner() {
   RUNNER_NAME="ci-runner-$i" \
   RUNNER_LABELS="$LABELS" \
   RUNNER_WORKDIR="$DIR/runner-$i/work" \
-    nohup "$PY" "$ROOT/src/runners/emulator/runner.py" \
+    nohup env ${RUNNER_ENV[@]+"${RUNNER_ENV[@]}"} "$PY" "$ROOT/src/runners/emulator/runner.py" \
       >"$DIR/runner-$i.log" 2>&1 &
   echo $! >"$DIR/runner-$i.pid"
 }
@@ -295,6 +318,9 @@ done
 HOOK
   chmod +x "$home/job-started.sh"
   echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=$home/job-started.sh" >>"$home/.env"
+  if [ ${#RUNNER_ENV[@]} -gt 0 ]; then
+    printf '%s\n' "${RUNNER_ENV[@]}" >>"$home/.env"
+  fi
   (cd "$home" && env ${outer[@]+"${outer[@]}"} nohup ./run.sh >>"$DIR/runner-$i.log" 2>&1 &
    echo $! >"$DIR/runner-$i.pid")
 }
