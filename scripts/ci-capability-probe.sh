@@ -141,6 +141,14 @@ jobs:
           script: console.log("MARK-githubcom")
 EOF
 
+# A cross-repository call to a repository the emulator does not hold.
+wf reusable-missing <<'EOF'
+on: workflow_dispatch
+jobs:
+  call:
+    uses: nowhere-org/nothing/.github/workflows/missing.yml@main
+EOF
+
 wf container <<'EOF'
 on: workflow_dispatch
 jobs:
@@ -221,7 +229,16 @@ EOF
 
 git_push_tree "$REPO" "$S"
 
-FEATURES=(composite reusable emuhost githubcom container oidc artifacts artifacts-pinned concurrency)
+FEATURES=(composite reusable reusable-missing emuhost githubcom container oidc artifacts artifacts-pinned concurrency)
+
+# Features the emulator refuses on purpose, and the message that says so. A
+# run that fails with it is the intended result, not a gap.
+refusal_for() {
+  case "$1" in
+    container) echo "not supported by this emulator's runners" ;;
+    reusable-missing) echo "was not found on this emulator" ;;
+  esac
+}
 
 # Dispatch the named workflows and wait until they complete or time out.
 dispatch_and_wait() {
@@ -289,9 +306,16 @@ row() { echo "| $1 | $2 | $3 |"; }
         row "$f" "works" "run $id success${extra:+, $extra}"
       fi
     else
+      # GitHub's log viewer acts on "##[" anywhere in a line, so defuse it.
       why="$(grep -v 'Process completed with exit code' <<<"$logs" |
-        grep -m1 -E 'Unsupported action|Error|error|not supported|failed' | tr '|' '/' | cut -c1-160)"
-      row "$f" "fails" "run $id $conclusion: ${why:-no marker in log}"
+        grep -m1 -E 'Unsupported action|Error|error|not supported|failed|not found' |
+        tr '|' '/' | sed 's/##\[/[/g' | cut -c1-160)"
+      refusal="$(refusal_for "$f")"
+      if [ -n "$refusal" ] && [ "$conclusion" = failure ] && grep -q "$refusal" <<<"$logs"; then
+        row "$f" "refused" "run $id failed as designed: ${why:-$refusal}"
+      else
+        row "$f" "fails" "run $id $conclusion: ${why:-no marker in log}"
+      fi
     fi
   done
 } | tee ${REPORT:+"$REPORT"}
