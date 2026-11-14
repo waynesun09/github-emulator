@@ -78,7 +78,10 @@ async def test_the_job_message_carries_the_results_service(
     client, uses_workflow, test_token  # noqa: F811
 ):
     body, _headers, ids = await _job(client, test_token)
-    assert body["variables"]["system.github.results_endpoint"]["Value"].endswith("/")
+    # The runner reads it from the SystemVssConnection endpoint's data and
+    # exports it as ACTIONS_RESULTS_URL.
+    [connection] = [e for e in body["resources"]["endpoints"] if e["name"] == "SystemVssConnection"]
+    assert connection["data"]["ResultsServiceUrl"].endswith("/")
     assert ids["workflow_job_run_backend_id"].isdigit()
 
 
