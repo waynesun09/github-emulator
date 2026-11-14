@@ -34,15 +34,13 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 10 | bt-f3-oidc-claims | 8a5556e | OIDC `repository_owner_id` and `/.well-known/jwks` |
 | 11 | bt-f3-localhost-dns | 6990963 | `CI_STACK_LOCALHOST_DNS`. The status script reports d079509 as missing because its pick, 75138e2, carries different context lines; the change itself is in. |
 | 12 | fix-runner-job-double-claim | 1073c32 | Atomic job claim on both runner paths; a lost job request answers with a 404 that the runner stops on |
+| 13 | fix-contents-sha-precondition | 00ca315 | Contents PUT: 422 with no sha, 409 on a stale sha; of two parallel writes, one wins |
+| 14 | fix-workflow-lookup-resync-per-request | 35a77aa | Workflow lookups cached by the workflows tree id, not resynced on every request |
+| 15 | fix-compare-merge-base | 133699f | Compare and cross-repo pulls use the real merge base |
+| 16 | fix-closed-by-pull-requests-references | a78f36d | GraphQL `closedByPullRequestsReferences` |
+| 17 | fix-close-issue-state-reason | 197ee90 | GraphQL `stateReason` as an enum on close and on the issue |
 
-## Pending
-
-These branches are not on the fork yet:
-- fix-contents-sha-precondition
-- fix-workflow-lookup-resync-per-request
-- fix-compare-merge-base
-- fix-closed-by-pull-requests-references
-- fix-close-issue-state-reason
+Nothing is pending. Every fix branch on the fork is listed above.
 
 ## Not included on purpose
 
