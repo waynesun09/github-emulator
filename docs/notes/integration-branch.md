@@ -42,6 +42,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 27 | chore-repo-hygiene | 58335de | pre-commit (ruff, gitleaks, shellcheck, actionlint, zizmor, frontend eslint/prettier), `.gitleaks.toml`, committed `uv.lock`, hygiene CI (hooks on the change, full-history secrets, pip-audit, npm audit, frontend checks), Dependabot, pinned Caddy, runner TLS verification by default |
 | 28 | fix-runner-job-cancellation | 8c2545c | A real runner gets a `JobCancellation` message when its job is cancelled (for example superseded under `cancel-in-progress`); its later report keeps `cancelled`. On this branch, d27a3b7 also frees the runner from the plan-events report |
 | 29 | fix-runner-orphaned-jobs | 5659aa4 | A runner whose job was deleted with its repository gets `JobCancellation`; a runner held busy that polls as Online is freed and its lost job fails (not within 2 minutes of the hand-out) |
+| 30 | fix-runner-cancel-delivery | 96ba47e | Stacked on 29. A cancellation committed during a long poll is seen (each pass ends its read transaction; reads are fresh), and a late finish report of a runner's previous job no longer frees it while it runs the next one, which had hidden that job's cancellation |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
