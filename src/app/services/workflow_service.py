@@ -280,6 +280,7 @@ def build_job_graph(workflow_yaml: dict) -> list[dict]:
             "_workflow_repository": config.get("_workflow_repository", ""),
             "_workflow_sha": config.get("_workflow_sha", ""),
             "_workflow_ref": config.get("_workflow_ref", ""),
+            "_caller": config.get("_caller"),
             "timeout_minutes": config.get("timeout-minutes", 360),
         })
 
@@ -668,11 +669,20 @@ async def _materialize_reusable_jobs(
                 f"{prefix}{dependency}" if dependency in called_keys else dependency
                 for dependency in child_needs
             ]
-            if config.get("needs"):
-                outer_needs = config["needs"]
-                if isinstance(outer_needs, str):
-                    outer_needs = [outer_needs]
+            outer_needs = config.get("needs") or []
+            if isinstance(outer_needs, str):
+                outer_needs = [outer_needs]
+            if outer_needs:
                 child["needs"] = [*outer_needs, *child["needs"]]
+            if depth == 0:
+                # The run's own caller job. When its ``if:`` is false, GitHub
+                # never expands the call and lists only this job, skipped.
+                child["_caller"] = {
+                    "key": key,
+                    "name": config.get("name", key),
+                    "if": caller_condition,
+                    "needs": list(outer_needs),
+                }
             expanded[f"{prefix}{called_key}"] = child
 
     result["jobs"] = expanded
@@ -1083,8 +1093,44 @@ async def create_workflow_run(
 
     job_list = build_job_graph(workflow_yaml)
     skipped_job_created = False
+    # Caller jobs of reusable workflows, by key: True when the call runs.
+    caller_runs: dict[str, bool] = {}
 
     for job_def in job_list:
+        caller = job_def.get("_caller")
+        # A caller with needs is decided at promotion; its called jobs carry
+        # its condition and are skipped one by one there.
+        if caller and not caller.get("needs"):
+            caller_key = caller["key"]
+            if caller_key in caller_runs:
+                if not caller_runs[caller_key]:
+                    continue
+            else:
+                caller_context = _job_context(expression_context, {})
+                caller_runs[caller_key] = evaluate_job_if(caller.get("if"), caller_context)
+                if not caller_runs[caller_key]:
+                    # GitHub never expands a skipped call: the run lists the
+                    # caller job alone, named after it. Listing every called
+                    # job as skipped instead named jobs that never existed.
+                    db.add(WorkflowJob(
+                        run_id=run.id,
+                        name=str(render_expressions(caller["name"], caller_context)),
+                        workflow_name=workflow.name,
+                        status="completed",
+                        conclusion="skipped",
+                        completed_at=datetime.now(timezone.utc),
+                        steps=[],
+                        labels=[],
+                        run_attempt=1,
+                        needs=[],
+                        permissions={},
+                        job_key=caller_key,
+                        outputs_config={},
+                        outputs={},
+                    ))
+                    skipped_job_created = True
+                    continue
+
         dynamic_matrix = dynamic_matrix_expression(job_def)
         if dynamic_matrix is not None and not job_def.get("needs"):
             # Nothing to wait for: the matrix reads only the event and the
