@@ -156,6 +156,22 @@ jobs:
           [ "$name" = "$GITHUB_REPOSITORY" ] && echo "MARK-gh-cli"
 EOF
 
+# Each job starts with an empty workspace, as on a fresh hosted machine:
+# nothing job a leaves behind is there for job b.
+wf clean-workspace <<'EOF'
+on: workflow_dispatch
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo left > leftover-from-a
+  b:
+    needs: a
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ ! -e leftover-from-a ] && echo "MARK-clean-workspace"'
+EOF
+
 # A cross-repository call to a repository the emulator does not hold.
 wf reusable-missing <<'EOF'
 on: workflow_dispatch
@@ -244,7 +260,7 @@ EOF
 
 git_push_tree "$REPO" "$S"
 
-FEATURES=(composite reusable reusable-missing emuhost githubcom gh-cli container oidc artifacts artifacts-pinned concurrency)
+FEATURES=(composite reusable reusable-missing emuhost githubcom gh-cli clean-workspace container oidc artifacts artifacts-pinned concurrency)
 
 # Features the emulator refuses on purpose, and the message that says so. A
 # run that fails with it is the intended result, not a gap.

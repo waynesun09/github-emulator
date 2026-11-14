@@ -235,6 +235,28 @@ start_upstream_runner() {
   (cd "$home" && env ${outer[@]+"${outer[@]}"} ./config.sh --unattended --replace \
     --url "$BASE/enterprises/$enterprise" --token "$reg" \
     --name "ci-runner-$i" --labels "$LABELS" --work _work) >"$DIR/runner-$i.log" 2>&1
+  # A GitHub-hosted job starts on a fresh machine; this runner reuses one
+  # work directory, so a job saw what the previous one left, such as a
+  # sparse checkout that a later full checkout of the same commit kept.
+  # Empty the workspace and temp directory before every job. Set in the
+  # runner's .env (written by config.sh above), which run.sh reads, so the
+  # outer-environment stripping cannot drop it.
+  cat >"$home/job-started.sh" <<'HOOK'
+#!/usr/bin/env bash
+# ACTIONS_RUNNER_HOOK_JOB_STARTED: start every job with an empty workspace.
+set -euo pipefail
+work="$(cd "$(dirname "$0")/_work" && pwd -P)"
+for dir in "${GITHUB_WORKSPACE:-}" "${RUNNER_TEMP:-}"; do
+  [ -n "$dir" ] && [ -d "$dir" ] || continue
+  real="$(cd "$dir" && pwd -P)"
+  case "$real/" in
+    "$work"/?*) find "$real" -mindepth 1 -maxdepth 1 -exec rm -rf {} + ;;
+    *) echo "job-started hook: not cleaning $real, outside $work" >&2 ;;
+  esac
+done
+HOOK
+  chmod +x "$home/job-started.sh"
+  echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=$home/job-started.sh" >>"$home/.env"
   (cd "$home" && env ${outer[@]+"${outer[@]}"} nohup ./run.sh >>"$DIR/runner-$i.log" 2>&1 &
    echo $! >"$DIR/runner-$i.pid")
 }
