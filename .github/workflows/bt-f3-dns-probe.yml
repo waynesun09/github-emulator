@@ -8,28 +8,32 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: How *.localhost resolves on the hosted VM
+      - name: One *.localhost name for runner and sandbox supervisor
         shell: bash
         run: |
           set -u
           ip="$(hostname -I | awk '{print $1}')"
           echo "vm ip: $ip"
-          echo "== /etc/resolv.conf"; grep -v '^#' /etc/resolv.conf
-          echo "== nsswitch hosts: $(grep '^hosts' /etc/nsswitch.conf)"
-          show() {
-            echo "-- $1"
-            echo "   getent: $(getent ahostsv4 "$1" | head -1)"
-            echo "   resolvectl: $(resolvectl query "$1" 2>&1 | head -1)"
-            echo "   dig @127.0.0.53: $(dig +short @127.0.0.53 "$1" A | tr '\n' ' ')"
-          }
-          echo "== before"; show ghemu.localhost
+          gh_before="$(dig +short api.github.com A | sort | tr '\n' ' ')"
+          # Host processes (glibc reads files first).
           echo "$ip ghemu.localhost" | sudo tee -a /etc/hosts >/dev/null
-          echo "== after /etc/hosts entry"; show ghemu.localhost
-          echo "== container with host network (what an OpenShell supervisor sees)"
-          podman run --rm --network host docker.io/library/alpine:3.20 sh -c 'grep nameserver /etc/resolv.conf; nslookup -type=a ghemu.localhost 2>&1 | tail -3'
-          echo "== with a resolved drop-in that disables the stub's synthesis is not possible; try a dnsmasq answer instead"
-          sudo apt-get -qq install -y dnsmasq-base >/dev/null 2>&1 || true
-          sudo dnsmasq --no-daemon --port=5353 --listen-address=127.0.0.1 --bind-interfaces --no-resolv --address=/ghemu.localhost/"$ip" --log-queries >/tmp/dnsmasq.log 2>&1 &
-          sleep 1
-          echo "   dig @127.0.0.1 -p 5353: $(dig +short @127.0.0.1 -p 5353 ghemu.localhost A | tr '\n' ' ')"
-          sudo pkill dnsmasq || true
+          # A resolver for everything that asks DNS directly (OpenShell policy DNS):
+          # answers ghemu.localhost only, forwards the rest to systemd-resolved.
+          sudo apt-get -qq install -y dnsmasq-base >/dev/null 2>&1
+          sudo ip addr add 127.0.0.2/8 dev lo 2>/dev/null || true
+          sudo dnsmasq --listen-address=127.0.0.2 --bind-interfaces --port=53 --no-resolv \
+            --server=127.0.0.53 --address=/ghemu.localhost/"$ip" --no-hosts --pid-file=/tmp/dnsmasq.pid
+          sudo cp /etc/resolv.conf /tmp/resolv.conf.orig
+          printf 'nameserver 127.0.0.2\noptions edns0 trust-ad\n' | sudo tee /etc/resolv.conf >/dev/null
+          echo "== host: getent=$(getent ahostsv4 ghemu.localhost | head -1 | awk '{print $1}')  dig(resolv.conf)=$(dig +short ghemu.localhost A)"
+          echo "== host: api.github.com before=[$gh_before] after=[$(dig +short api.github.com A | sort | tr '\n' ' ')]"
+          echo "== host: curl https://api.github.com/zen -> $(curl -s -o /dev/null -w '%{http_code} %{remote_ip}' https://api.github.com/zen)"
+          echo "== host-network container (OpenShell supervisor's view):"
+          podman run --rm --network host docker.io/library/alpine:3.20 sh -c '
+            echo "   resolv.conf: $(grep nameserver /etc/resolv.conf)";
+            echo "   ghemu.localhost -> $(nslookup -type=a ghemu.localhost 2>/dev/null | awk "/^Address: /{print \$2}" | tail -1)";
+            echo "   api.github.com  -> $(nslookup -type=a api.github.com 2>/dev/null | awk "/^Address: /{print \$2}" | tr "\n" " ")"'
+          echo "== fail-closed check: dnsmasq stopped"
+          sudo kill "$(cat /tmp/dnsmasq.pid)"; sleep 1
+          sudo cp /tmp/resolv.conf.orig /etc/resolv.conf
+          echo "   dig ghemu.localhost via resolved -> $(dig +short @127.0.0.53 ghemu.localhost A)"
