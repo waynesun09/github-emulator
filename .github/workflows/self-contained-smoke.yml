@@ -247,7 +247,10 @@ jobs:
             [ "$got" = "$ip" ] || { echo "::error::$CI_STACK_HOST resolved to '$got', not $ip"; exit 1; }
           done
           [ "${tls%% *}" = 200 ] && [ "${tls##* }" = "$ip" ] || { echo "::error::https to $CI_STACK_HOST: $tls"; exit 1; }
-          [ "$github" = 200 ] || { echo "::error::api.github.com: $github"; exit 1; }
+          # Any HTTP answer shows github.com still resolves and TLS works; an
+          # anonymous request may get 403 from GitHub's rate limit for the
+          # shared runner address. Only no answer (000) means DNS broke.
+          [ "$github" != 000 ] || { echo "::error::api.github.com unreachable"; exit 1; }
       - name: Probe
         run: |
           {
