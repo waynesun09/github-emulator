@@ -147,7 +147,17 @@ jobs:
           got_node="$(node -e 'require("dns").lookup(process.argv[1], {family: 4}, (e, a) => console.log(e ? e.code : a))' "$CI_STACK_HOST")"
           got_dotnet="$(pwsh -NoProfile -Command "([System.Net.Dns]::GetHostAddresses('$CI_STACK_HOST') | Where-Object AddressFamily -eq 'InterNetwork' | Select-Object -First 1).IPAddressToString")"
           got_container="$(podman run --rm --network host docker.io/library/alpine:3.20 nslookup -type=a "$CI_STACK_HOST" 2>/dev/null | awk '/^Address: /{print $2}' | tail -1)"
-          tls="$(curl -s -o /dev/null -w '%{http_code} %{remote_ip}' --cacert "$CI_STACK_DIR/tls/ca.pem" "https://$CI_STACK_HOST/api/v3")"
+          # gh and fullsend are Go: check both Go resolvers.
+          mkdir -p /tmp/golookup && printf '%s\n' 'package main' 'import ("context";"fmt";"net";"os")' \
+            'func main() { for _, pure := range []bool{true, false} { r := &net.Resolver{PreferGo: pure}; a, err := r.LookupIP(context.Background(), "ip4", os.Args[1]); fmt.Println(a, err) } }' > /tmp/golookup/main.go
+          got_go_pure="$(cd /tmp/golookup && go run main.go "$CI_STACK_HOST" | sed -n 1p | tr -d '[]')"
+          got_go_cgo="$(cd /tmp/golookup && go run main.go "$CI_STACK_HOST" | sed -n 2p | tr -d '[]')"
+          got_go_pure="${got_go_pure% <nil>}"; got_go_cgo="${got_go_cgo% <nil>}"
+          # curl answers *.localhost with loopback itself (RFC 6761) and never
+          # asks DNS, so reach the stack the way Node does instead.
+          tls="$(NODE_EXTRA_CA_CERTS="$CI_STACK_DIR/tls/ca.pem" node -e '
+            const r = require("https").get("https://" + process.argv[1] + "/api/v3", res => { console.log(res.statusCode + " " + res.socket.remoteAddress); res.resume(); });
+            r.on("error", e => console.log("error " + e.code));' "$CI_STACK_HOST")"
           github="$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/zen)"
           {
             echo "### ${{ matrix.name }}: $CI_STACK_HOST resolution (VM address $ip)"
@@ -159,10 +169,13 @@ jobs:
             echo "| Node dns.lookup | $got_node |"
             echo "| .NET Dns.GetHostAddresses (pwsh) | $got_dotnet |"
             echo "| host-network container | $got_container |"
-            echo "| https://$CI_STACK_HOST/api/v3 | $tls |"
+            echo "| Go net, pure resolver | $got_go_pure |"
+            echo "| Go net, cgo resolver | $got_go_cgo |"
+            echo "| curl (resolves *.localhost itself) | $(curl -s -o /dev/null -w '%{remote_ip}' --cacert "$CI_STACK_DIR/tls/ca.pem" "https://$CI_STACK_HOST/api/v3") |"
+            echo "| Node https to https://$CI_STACK_HOST/api/v3 | $tls |"
             echo "| https://api.github.com/zen | $github |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
-          for got in "$got_glibc" "$got_dns" "$got_node" "$got_dotnet" "$got_container"; do
+          for got in "$got_glibc" "$got_dns" "$got_node" "$got_dotnet" "$got_container" "$got_go_pure" "$got_go_cgo"; do
             [ "$got" = "$ip" ] || { echo "::error::$CI_STACK_HOST resolved to '$got', not $ip"; exit 1; }
           done
           [ "${tls%% *}" = 200 ] && [ "${tls##* }" = "$ip" ] || { echo "::error::https to $CI_STACK_HOST: $tls"; exit 1; }
