@@ -588,7 +588,11 @@ def _job_request_message(
         "plan": {
             "planId": plan_guid,
             "planType": "Build",
-            "version": 1,
+            # From plan version 8 the worker raises JobCompleted, carrying the
+            # job's outputs, and the listener no longer finishes the request
+            # (PlanUtil.GetFeatures). Below 8 the outputs are never sent, so
+            # dt_raise_plan_event completes the job instead.
+            "version": 8,
         },
         "timeline": {
             "id": timeline_id,
@@ -1320,13 +1324,14 @@ def _wrapped_exception(status: int, type_key: str, message: str) -> JSONResponse
 async def dt_raise_plan_event(
     hub_name: str, plan_id: str, request: Request, db: DbSession,
 ):
-    """Record what the worker's JobCompleted event carries: the job's outputs.
+    """Complete the job from the worker's JobCompleted event.
 
     The upstream runner resolves a job's ``outputs:`` itself and sends them
-    only in this event; completion and the result still arrive through the
-    job request. Without this route the outputs were dropped, and every
-    ``needs.<job>.outputs.<name>`` rendered empty. A secret output is left
-    out, as GitHub leaves it out.
+    only in this event, which it raises from plan version 8; at that version
+    the listener no longer finishes the job request, so this event is the
+    job's completion too. The outputs are stored first, so the jobs that need
+    this one are released with them. A secret output is left out, as GitHub
+    leaves it out.
     """
     job = await _get_job_from_job_token(request, db)
     body = await request.json()
@@ -1345,6 +1350,11 @@ async def dt_raise_plan_event(
             value = value.get("value", value.get("Value"))
         resolved[key] = "" if value is None else str(value)
     job.outputs = {**(job.outputs or {}), **resolved}
+    if job.status != "completed":
+        runner = (await db.execute(select(Runner).where(Runner.id == job.runner_id))).scalar_one_or_none()
+        if runner is None:
+            raise HTTPException(status_code=409, detail="Job has no runner to complete it")
+        await _complete_job(job, runner, body.get("result", body.get("Result", "Succeeded")), db)
     await db.commit()
     return Response(status_code=200)
 

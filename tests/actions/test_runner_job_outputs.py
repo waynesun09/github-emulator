@@ -53,6 +53,31 @@ async def test_job_completed_outputs_are_kept_and_secrets_are_not(
     db_session.expire_all()
     job = (await db_session.execute(select(WorkflowJob))).scalars().first()
     assert job.outputs == {"stage": "triage", "payload": '{"a":1}'}
+    # From plan version 8 the listener no longer finishes the request, so
+    # this event completes the job.
+    assert (job.status, job.conclusion) == ("completed", "success")
+
+
+@pytest.mark.asyncio
+async def test_the_plan_asks_the_worker_for_the_completed_event(
+    client, uses_workflow, test_token  # noqa: F811
+):
+    """PlanUtil.GetFeatures: JobCompletedPlanEvent needs plan version 8."""
+    body = await _claim_job(client, test_token)
+    assert body["plan"]["version"] >= 8
+
+
+@pytest.mark.asyncio
+async def test_a_failed_job_completes_as_failed(
+    client, db_session, uses_workflow, test_token  # noqa: F811
+):
+    body = await _claim_job(client, test_token)
+    token = body["variables"]["system.github.token"]["Value"]
+    event = {**_event(body["jobId"], {}), "result": "failed"}
+    assert (await _raise(client, body, token, event)).status_code == 200
+    db_session.expire_all()
+    job = (await db_session.execute(select(WorkflowJob))).scalars().first()
+    assert (job.status, job.conclusion) == ("completed", "failure")
 
 
 @pytest.mark.asyncio
