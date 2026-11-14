@@ -314,6 +314,7 @@ def build_job_graph(workflow_yaml: dict) -> list[dict]:
             "_workflow_sha": config.get("_workflow_sha", ""),
             "_workflow_ref": config.get("_workflow_ref", ""),
             "_caller": config.get("_caller"),
+            "_needs_aliases": config.get("_needs_aliases") or {},
             "timeout_minutes": config.get("timeout-minutes", 360),
         })
 
@@ -493,6 +494,43 @@ async def _resolve_ref_sha(repo_disk_path: str, ref: str) -> str:
     return stdout.decode().strip()
 
 
+def _declared_call_outputs(called: dict) -> dict[str, str]:
+    """``on.workflow_call.outputs`` as name -> value expression."""
+    on = called.get("on") or called.get(True) or {}
+    call = on.get("workflow_call") if isinstance(on, dict) else None
+    declared = call.get("outputs") if isinstance(call, dict) else None
+    if not isinstance(declared, dict):
+        return {}
+    return {
+        str(name): str(spec.get("value", "")) if isinstance(spec, dict) else str(spec)
+        for name, spec in declared.items()
+    }
+
+
+def needs_alias_entries(aliases: dict, needs_context: dict) -> dict:
+    """needs.<caller> for each reusable-workflow caller a job needs.
+
+    The result is the worst of the called jobs' results, as for a matrix;
+    outputs are the call's workflow_call outputs, evaluated with a ``jobs``
+    context holding the called jobs by their own keys.
+    """
+    entries = {}
+    for caller, alias in (aliases or {}).items():
+        jobs_context = {
+            inner: needs_context.get(outer) or {"outputs": {}, "result": ""}
+            for inner, outer in alias.get("jobs", {}).items()
+        }
+        result = ""
+        for entry in jobs_context.values():
+            result = _combined_result(result, entry.get("result") or "")
+        outputs = {
+            name: str(render_expressions(expression, {"jobs": jobs_context}) or "")
+            for name, expression in (alias.get("outputs") or {}).items()
+        }
+        entries[caller] = {"result": result, "outputs": outputs}
+    return entries
+
+
 def _declared_call_inputs(called: dict) -> dict:
     """Return the `on.workflow_call.inputs` declaration of a called workflow."""
     on = called.get("on") or called.get(True) or {}
@@ -597,6 +635,9 @@ async def _materialize_reusable_jobs(
 
     result = copy.deepcopy(workflow_yaml)
     expanded: dict[str, dict] = {}
+    # Each inlined caller at this level: its called jobs by their own key and
+    # by the key they get here, and its ``on.workflow_call.outputs``.
+    callers: dict[str, dict] = {}
     for key, config in jobs.items():
         if not isinstance(config, dict) or not config.get("uses"):
             expanded[key] = _render_reusable_call_context(config, inputs, secrets)
@@ -671,9 +712,20 @@ async def _materialize_reusable_jobs(
         called_jobs = materialized.get("jobs", {})
         called_keys = set(called_jobs)
         prefix = f"{key} / "
+        callers[key] = {
+            "jobs": {called_key: f"{prefix}{called_key}" for called_key in called_jobs},
+            "outputs": _declared_call_outputs(called),
+        }
         for called_key, called_config in called_jobs.items():
             child = copy.deepcopy(called_config)
             child["name"] = child.get("name", f"{key} / {called_key}")
+            # Aliases a nested level gave this job name its jobs by their keys
+            # there; this level prefixes those keys, so prefix them here too.
+            for alias in (child.get("_needs_aliases") or {}).values():
+                alias["jobs"] = {
+                    inner: f"{prefix}{outer}" if outer in called_keys else outer
+                    for inner, outer in alias["jobs"].items()
+                }
             caller_condition = config.get("if")
             child_condition = child.get("if")
             if caller_condition is not None:
@@ -722,6 +774,27 @@ async def _materialize_reusable_jobs(
                     "needs": list(outer_needs),
                 }
             expanded[f"{prefix}{called_key}"] = child
+
+    # A job that needs a caller needs every job the call inlined: the caller
+    # itself is no job in the run. needs.<caller> still has to answer, with
+    # the call's result and its workflow_call outputs, so the job carries
+    # what the scheduler needs to build that entry (_needs_aliases).
+    for job in expanded.values():
+        if not isinstance(job, dict):
+            continue
+        needs = job.get("needs") or []
+        if isinstance(needs, str):
+            needs = [needs]
+        if not any(need in callers for need in needs):
+            continue
+        remapped: list[str] = []
+        for need in needs:
+            if need in callers:
+                remapped.extend(callers[need]["jobs"].values())
+                job.setdefault("_needs_aliases", {})[need] = copy.deepcopy(callers[need])
+            else:
+                remapped.append(need)
+        job["needs"] = list(dict.fromkeys(remapped))
 
     result["jobs"] = expanded
     return result
@@ -1177,6 +1250,14 @@ async def create_workflow_run(
     caller_runs: dict[str, bool] = {}
 
     for job_def in job_list:
+        # A need on a caller became a need on its called jobs. A skipped
+        # caller creates none of them, only one skipped job under its own
+        # key, so point the need back at that job.
+        for alias_caller, alias in (job_def.get("_needs_aliases") or {}).items():
+            if caller_runs.get(alias_caller) is False:
+                called = set(alias.get("jobs", {}).values())
+                kept = [need for need in job_def.get("needs", []) if need not in called]
+                job_def["needs"] = [*kept, alias_caller]
         caller = job_def.get("_caller")
         # A caller with needs is decided at promotion; its called jobs carry
         # its condition and are skipped one by one there.
@@ -1263,6 +1344,7 @@ async def create_workflow_run(
                     "_call_secrets": job_config.get("_call_secrets") or {},
                     "_workflow_repository": job_config.get("_workflow_repository") or "",
                     "_workflow_sha": job_config.get("_workflow_sha") or "",
+                    "_needs_aliases": job_config.get("_needs_aliases") or {},
                 }
                 if dynamic_matrix is not None:
                     # Expanded at promotion, once needs.*.outputs exist. The
