@@ -327,6 +327,9 @@ async def check_run_completion(db: AsyncSession, run_id: int) -> WorkflowRun | N
         run.conclusion = "failure"
     elif "cancelled" in conclusions:
         run.conclusion = "cancelled"
+    elif conclusions and all(c == "skipped" for c in conclusions):
+        # GitHub concludes a run whose every job was skipped as skipped.
+        run.conclusion = "skipped"
     elif all(c in ("success", "skipped") for c in conclusions):
         run.conclusion = "success"
     else:
