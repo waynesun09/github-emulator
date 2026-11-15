@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.actions_dispatch import _claim_queued_job
@@ -976,7 +976,10 @@ _IDLE_GRACE = timedelta(minutes=2)
 _poll_generation: dict[int, int] = {}
 # Job messages a runner acknowledged (DELETE of the message, which the runner
 # sends once it has dispatched the job, before its next poll). A job in here
-# was received for certain, whatever lastMessageId a late poll carries.
+# was received for certain, whatever lastMessageId a late poll carries. Kept
+# for good (job ids are never reused): dropping an id when its report arrived
+# opened a gap, before that report committed, in which the job looked
+# unreceived and was requeued after it had run.
 _acknowledged: set[int] = set()
 _runner_locks: dict[tuple[int, int], asyncio.Lock] = {}
 
@@ -1093,14 +1096,22 @@ async def _settle_idle_runner(runner: Runner, status: str, last_message_id: str,
                 # within milliseconds. Decide on a later pass.
                 await db.commit()
                 return
-            logger.info(
-                "Runner %s never received job %s (its last message is %s); job requeued",
-                runner.name, job.id, last_message_id,
+            # Conditional: a report of this job committed meanwhile wins.
+            requeued = await db.execute(
+                update(WorkflowJob)
+                .where(
+                    WorkflowJob.id == job.id,
+                    WorkflowJob.status == "in_progress",
+                    WorkflowJob.runner_id == runner.id,
+                )
+                .values(status="queued", runner_id=None, runner_name=None, started_at=None)
+                .execution_options(synchronize_session=False)
             )
-            job.status = "queued"
-            job.runner_id = None
-            job.runner_name = None
-            job.started_at = None
+            if requeued.rowcount == 1:
+                logger.info(
+                    "Runner %s never received job %s (its last message is %s); job requeued",
+                    runner.name, job.id, last_message_id,
+                )
             continue
         if age < _IDLE_GRACE:
             # The runner can poll once more as Online right after it took
@@ -1151,7 +1162,6 @@ async def _complete_job(job: WorkflowJob, runner: Runner, result_str: str, db) -
     else:
         if _holding.get(runner.id, (None,))[0] == job.id:
             del _holding[runner.id]
-        _acknowledged.discard(job.id)
         runner.busy = False
         runner.status = "online"
     logger.info("Runner %s reported job %s: %s (%s)", runner.name, job.id, result_str, job.conclusion)
