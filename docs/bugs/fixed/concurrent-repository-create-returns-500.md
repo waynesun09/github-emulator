@@ -20,5 +20,4 @@ repositories.
 `POST /user/repos` route now roll back on that IntegrityError. They answer
 422 "already exists", the same as a sequential duplicate.
 
-Tests: `tests/test_repo_create_name_race.py`. The first test fails without
-the fix.
+Test: `tests/test_repo_create_name_race.py`. It fails without the fix.

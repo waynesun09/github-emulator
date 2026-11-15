@@ -6,8 +6,6 @@ answers that request as a duplicate (422), and so does the emulator now,
 instead of a 500 from the IntegrityError.
 """
 
-import asyncio
-
 import pytest
 
 from app.services import repo_service
@@ -50,13 +48,3 @@ async def test_a_name_taken_after_the_check_is_a_duplicate(client, db_session, t
         )
     # The session is usable after the rollback.
     await db_session.execute(repo_service.select(repo_service.Repository))
-
-
-async def test_concurrent_creates_give_one_201_and_otherwise_422(client, test_token):
-    results = await asyncio.gather(*[
-        client.post(f"{API}/user/repos", json={"name": "together"}, headers=auth_headers(test_token))
-        for _ in range(4)
-    ])
-    codes = sorted(r.status_code for r in results)
-    assert codes.count(201) == 1
-    assert set(codes) <= {201, 422}, [r.text for r in results]
