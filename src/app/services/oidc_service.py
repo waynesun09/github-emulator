@@ -50,7 +50,8 @@ def issue_for_job(claims: dict, audience: str) -> str:
         "iss": issuer(),
         "aud": audience,
         "iat": now,
-        "nbf": now - 5,
+        # GitHub's tokens are valid from five minutes before issue.
+        "nbf": now - 300,
         "exp": now + 300,
         "jti": uuid.uuid4().hex,
         **claims,
