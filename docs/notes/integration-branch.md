@@ -61,6 +61,8 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 46 | fix-rest-json-body-and-token-revoke | 7f2cab1 (+ apps.py import sort) | `/api/v3` writes read a JSON object or array body whatever the Content-Type (missing, form-encoded, text/plain), as GitHub does; `DELETE /installation/token` revokes the calling token (204) (bt-f3, picked by bt-f4) |
 | 47 | ci-self-contained | this row's commit | `CI_STACK_RAW_ADDR` (action input `raw-addr`) answers raw.githubusercontent.com with a given public IPv4 address on lo instead of the VM's private one, for a client whose fetch guard refuses private addresses (Fullsend's URL-sourced harness); the fallback for unknown repositories keeps the real address |
 | 48 | fix-graphql-pr-comment-and-issue-input | 81007da | GraphQL `addComment` and `addReaction` accept a PullRequest node id (resolved to its backing issue), so `gh pr close --comment` works; `CreateIssueInput` accepts and ignores `projectIds`, `projectV2Ids`, `issueTemplate`, `issueTypeId` and `parentIssueId`, which `gh issue create` sends (bt-f3, agents base run) |
+| 49 | fix-repo-create-name-race | 2443b5c | Two concurrent creates of the same repository name: the loser answered 500 (IntegrityError on the unique index); now it rolls back and answers 422, as GitHub does (bt-f4, 1-3 per reliability run) |
+| 50 | fix-stale-row-404 | fff87e5 | An update of a row another request deleted (a runner reporting a job after its repository was deleted) answered 500 with StaleDataError; now 404 (bt-f4, agents run 43726152193) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
