@@ -25,12 +25,56 @@ def event_loop():
     loop.close()
 
 
+# TEST_POSTGRES_URL=postgresql+asyncpg://user:pass@host:port/db runs every
+# test against PostgreSQL instead, each in a schema of its own.
+TEST_POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL", "")
+
+
+# For tests that build rows pointing at nothing (a job of a run id never
+# created, a runner of a deleted repository) to model state only SQLite, which
+# does not enforce foreign keys, can hold.
+requires_unenforced_foreign_keys = pytest.mark.skipif(
+    bool(TEST_POSTGRES_URL), reason="builds rows PostgreSQL's foreign keys refuse",
+)
+
+
+# For tests of SQLite's own behaviour: its writer lock, its busy timeout,
+# statement counts under its driver.
+requires_sqlite = pytest.mark.skipif(bool(TEST_POSTGRES_URL), reason="tests SQLite's locking")
+
+
+def _test_db_url(tmp_path) -> str:
+    return TEST_POSTGRES_URL or f"sqlite+aiosqlite:///{tmp_path}/test.db"
+
+
 @pytest_asyncio.fixture
 async def db_engine(tmp_path):
-    """Create a fresh in-memory SQLite database for each test."""
+    """Create a fresh database for each test: a SQLite file, or a PostgreSQL schema."""
     import app.models  # noqa: F401 - populate SQLAlchemy metadata before create_all
 
-    db_url = f"sqlite+aiosqlite:///{tmp_path}/test.db"
+    if TEST_POSTGRES_URL:
+        from sqlalchemy import text
+
+        schema = f"t_{secrets.token_hex(6)}"
+        admin = create_async_engine(TEST_POSTGRES_URL)
+        async with admin.begin() as conn:
+            await conn.execute(text(f"CREATE SCHEMA {schema}"))
+        engine = create_async_engine(
+            # READ COMMITTED, PostgreSQL's default: a test's own session reads
+            # between requests the way SQLite's driver let it. The app's
+            # SERIALIZABLE is exercised by scripts/db-write-bench.py.
+            TEST_POSTGRES_URL, connect_args={"server_settings": {"search_path": schema}},
+        )
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield engine
+        await engine.dispose()
+        async with admin.begin() as conn:
+            await conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+        await admin.dispose()
+        return
+
+    db_url = _test_db_url(tmp_path)
     engine = create_async_engine(
         db_url,
         connect_args={"check_same_thread": False, "timeout": 0.1},
@@ -56,7 +100,7 @@ async def app(db_engine, tmp_path):
     """Create a test FastAPI application with overridden dependencies."""
     # Override settings before importing app
     os.environ["GITHUB_EMULATOR_DATA_DIR"] = str(tmp_path / "data")
-    os.environ["GITHUB_EMULATOR_DATABASE_URL"] = f"sqlite+aiosqlite:///{tmp_path}/test.db"
+    os.environ["GITHUB_EMULATOR_DATABASE_URL"] = _test_db_url(tmp_path)
     os.environ["GITHUB_EMULATOR_BASE_URL"] = "http://testserver"
 
     os.makedirs(str(tmp_path / "data" / "repos"), exist_ok=True)
@@ -65,7 +109,7 @@ async def app(db_engine, tmp_path):
     from app.config import settings
 
     settings.DATA_DIR = str(tmp_path / "data")
-    settings.DATABASE_URL = f"sqlite+aiosqlite:///{tmp_path}/test.db"
+    settings.DATABASE_URL = _test_db_url(tmp_path)
     settings.BASE_URL = "http://testserver"
 
     test_app = create_app()

@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # DELETE) starts its first transaction (BEGIN IMMEDIATE), instead of at
     # its first write. Reads then share that request's snapshot.
     SQLITE_BEGIN_IMMEDIATE: bool = False
+    # Transaction isolation for a server database (PostgreSQL). READ
+    # COMMITTED, with atomic counters and row locks where requests race.
+    # SERIALIZABLE answered 80% of a concurrent issue load with 503 (each
+    # conflict is a failed request; few write paths can replay).
+    DATABASE_ISOLATION_LEVEL: str = "READ COMMITTED"
     # Log the event loop running a timer this late (app/database_diag.py).
     EVENT_LOOP_LAG_LOG_MS: int = 500
     # Requests per token (or client address) per hour that the rate-limit

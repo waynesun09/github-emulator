@@ -35,6 +35,10 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "httpx>=0.26.0",
 ]
+# PostgreSQL instead of SQLite: GITHUB_EMULATOR_DATABASE_URL=postgresql+asyncpg://...
+postgres = [
+    "asyncpg>=0.30.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

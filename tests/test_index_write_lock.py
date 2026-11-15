@@ -14,6 +14,10 @@ from app.models.search_index import FileContent
 from app.services import index_service
 from tests.conftest import API, auth_headers
 
+from tests.conftest import requires_sqlite  # noqa: E402
+
+pytestmark = requires_sqlite
+
 
 @pytest.mark.asyncio
 async def test_other_writers_are_not_blocked_while_the_tree_is_read(

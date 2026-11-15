@@ -68,7 +68,7 @@ async def resolve_fork_for_owner(
 ) -> Repository | None:
     """The repository of ``owner_login`` in ``base``'s fork network, as REST's
     ``head: "owner:branch"`` (and optional ``head_repo``) names it."""
-    query = select(Repository).where(Repository.full_name.like(f"{owner_login}/%"))
+    query = select(Repository).where(Repository.full_name.ilike(f"{owner_login}/%"))
     if repo_name:
         query = select(Repository).where(Repository.full_name == f"{owner_login}/{repo_name}")
     candidates = (await db.execute(query.order_by(Repository.id))).scalars().all()

@@ -9,16 +9,28 @@ class Base(DeclarativeBase):
     pass
 
 
-def _pool_args(url: str) -> dict:
-    """Pool sizing for a file-backed SQLite database.
+IS_SQLITE = settings.DATABASE_URL.startswith("sqlite")
 
-    An in-memory database uses a single shared connection (StaticPool),
-    which takes no size.
+
+def _pool_args(url: str) -> dict:
+    """Pool sizing for a file-backed SQLite database or a server database.
+
+    An in-memory SQLite database uses a single shared connection
+    (StaticPool), which takes no size.
     """
-    if url.startswith("sqlite") and ":memory:" not in url and "mode=memory" not in url:
+    if url.startswith("sqlite") and (":memory:" in url or "mode=memory" in url):
+        return {}
+    return {
+        "pool_size": settings.SQLITE_POOL_SIZE,
+        "max_overflow": settings.SQLITE_MAX_OVERFLOW,
+    }
+
+
+def _connect_args(url: str) -> dict:
+    if url.startswith("sqlite"):
         return {
-            "pool_size": settings.SQLITE_POOL_SIZE,
-            "max_overflow": settings.SQLITE_MAX_OVERFLOW,
+            "check_same_thread": False,
+            "timeout": settings.SQLITE_BUSY_TIMEOUT_MS / 1000,
         }
     return {}
 
@@ -26,10 +38,9 @@ def _pool_args(url: str) -> dict:
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    connect_args={
-        "check_same_thread": False,
-        "timeout": settings.SQLITE_BUSY_TIMEOUT_MS / 1000,
-    },
+    connect_args=_connect_args(settings.DATABASE_URL),
+    pool_pre_ping=not IS_SQLITE,
+    **({} if IS_SQLITE else {"isolation_level": settings.DATABASE_ISOLATION_LEVEL}),
     **_pool_args(settings.DATABASE_URL),
 )
 

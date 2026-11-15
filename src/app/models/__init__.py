@@ -28,7 +28,10 @@ from app.models.import_job import ImportJob
 from app.models.apps import GitHubApp, AppInstallation, AppInstallationToken
 from app.models.artifact import WorkflowArtifact
 
+from sqlalchemy import DateTime
+
 from app.database import Base
+from app.db_types import UTCDateTime
 
 # GitHub never hands out an id twice. SQLite does unless a table is declared
 # AUTOINCREMENT: an INTEGER PRIMARY KEY otherwise takes max(rowid) + 1, so
@@ -40,7 +43,12 @@ from app.database import Base
 # existing database the same way.
 for _table in Base.metadata.tables.values():
     _table.dialect_options["sqlite"]["autoincrement"] = True
-del _table
+    # Every DateTime column binds as naive UTC on every database
+    # (app/db_types.py), so PostgreSQL accepts what SQLite did.
+    for _column in _table.columns:
+        if type(_column.type) is DateTime:
+            _column.type = UTCDateTime()
+del _table, _column
 
 __all__ = [
     "User",

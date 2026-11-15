@@ -9,7 +9,7 @@ from app.models.organization import Organization
 from app.models.pull_request import PullRequest
 from app.models.user import User
 
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, requires_unenforced_foreign_keys
 
 
 @pytest.mark.asyncio
@@ -246,6 +246,7 @@ async def test_admin_issues_uses_one_projection_query(
     assert "join pull_requests" in inventory_queries[0]
 
 
+@requires_unenforced_foreign_keys
 @pytest.mark.asyncio
 async def test_admin_runners_name_their_scope(client, admin_token, db_session):
     """A runner's scope names the repository or org, not its foreign key.
@@ -310,6 +311,7 @@ async def test_admin_runners_name_their_scope(client, admin_token, db_session):
     assert ghost["scope_url"] is None
 
 
+@requires_unenforced_foreign_keys
 @pytest.mark.asyncio
 async def test_admin_can_remove_a_site_scoped_runner(client, admin_token, db_session):
     """A site-scoped runner had no delete route at any scope.
@@ -440,6 +442,7 @@ async def test_admin_actions_lists_unfinished_runs_across_repos(
     assert row["url"] == f"/ui/{made[1][0]}/actions/runs/{made[1][1]}"
 
 
+@requires_unenforced_foreign_keys
 @pytest.mark.asyncio
 async def test_admin_actions_keeps_runs_whose_repository_is_gone(
     client, admin_token, db_session
@@ -497,6 +500,7 @@ async def test_admin_actions_keeps_runs_whose_repository_is_gone(
     assert [j["name"] for j in row["active_jobs"]] == ["orphaned"]
 
 
+@requires_unenforced_foreign_keys
 @pytest.mark.asyncio
 async def test_admin_can_cancel_a_run_whose_repository_is_gone(
     client, admin_token, db_session

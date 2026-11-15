@@ -180,6 +180,11 @@ async def generic_error_handler(request: Request, exc: Exception) -> JSONRespons
 
     if is_sqlite_database_locked(exc):
         return await github_error_handler(request, RetryableDatabaseError())
+    import logging
+
+    logging.getLogger("github_emulator").error(
+        "%s %s failed", request.method, request.url.path, exc_info=exc
+    )
     return _build_error_response(500, "Internal Server Error")
 
 
@@ -224,9 +229,11 @@ def register_error_handlers(app: FastAPI) -> None:
             return await handler(request, exc)
         return _build_error_response(exc.status_code, exc.detail)
 
-    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.exc import DBAPIError
 
-    app.add_exception_handler(OperationalError, generic_error_handler)
+    # Every driver error, so PostgreSQL's serialization failures (a plain
+    # DBAPIError under asyncpg) answer 503 like SQLite's lock does.
+    app.add_exception_handler(DBAPIError, generic_error_handler)
 
     from sqlalchemy.orm.exc import StaleDataError
 

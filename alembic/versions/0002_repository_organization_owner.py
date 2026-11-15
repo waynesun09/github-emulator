@@ -27,14 +27,17 @@ def upgrade() -> None:
 
     # Older rows encoded the namespace only in full_name and kept owner_id as
     # the human creator. Recover the organization identity without resetting data.
+    # The owner part of full_name: SQLite has instr, PostgreSQL split_part.
+    owner = (
+        "split_part(repositories.full_name, '/', 1)" if bind.dialect.name == "postgresql"
+        else "substr(repositories.full_name, 1, instr(repositories.full_name, '/') - 1)"
+    )
     bind.execute(
         sa.text(
             "UPDATE repositories "
             "SET organization_id = ("
             "  SELECT organizations.id FROM organizations "
-            "  WHERE organizations.login = substr("
-            "    repositories.full_name, 1, instr(repositories.full_name, '/') - 1"
-            "  )"
+            f"  WHERE organizations.login = {owner}"
             ") "
             "WHERE owner_type = 'Organization' AND organization_id IS NULL"
         )

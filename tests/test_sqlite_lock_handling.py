@@ -13,6 +13,10 @@ from app.models.import_job import ImportJob
 from app.models.repository import Repository
 from tests.conftest import auth_headers
 
+from tests.conftest import requires_sqlite  # noqa: E402
+
+pytestmark = requires_sqlite
+
 API = "/api/v3"
 
 
