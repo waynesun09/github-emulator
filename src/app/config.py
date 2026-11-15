@@ -34,6 +34,10 @@ class Settings(BaseSettings):
 
     # Hostname for Caddy TLS / gh CLI integration
     HOSTNAME: str = "ghemu.local"
+    # Host names whose requests use github.com's raw path shape
+    # (/<owner>/<repo>/<ref>/<path>); see app/middleware/raw_host.py.
+    # Only matters on a machine that resolves the name to this emulator.
+    RAW_CONTENT_HOSTS: str = "raw.githubusercontent.com"
 
     # Where the upstream runner's `uses:` actions are resolved and fetched
     # from. The emulator does both on the runner's behalf: it resolves the
