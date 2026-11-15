@@ -1023,15 +1023,17 @@ async def github_identity_context(db: AsyncSession, run: WorkflowRun) -> dict:
     repo_id = getattr(run, "repo_id", None)
     actor_id = getattr(run, "actor_id", None)
     workflow_id = getattr(run, "workflow_id", None)
+    # Columns only: the Repository and User entities load their eager
+    # relationships (issues, labels, branches, tokens, memberships...).
     repo = (await db.execute(
-        select(Repository).where(Repository.id == repo_id)
-    )).scalar_one_or_none() if repo_id else None
+        select(Repository.id, Repository.owner_id, Repository.full_name).where(Repository.id == repo_id)
+    )).one_or_none() if repo_id else None
     actor = (await db.execute(
-        select(User).where(User.id == actor_id)
-    )).scalar_one_or_none() if actor_id else None
+        select(User.id, User.login).where(User.id == actor_id)
+    )).one_or_none() if actor_id else None
     workflow = (await db.execute(
-        select(Workflow).where(Workflow.id == workflow_id)
-    )).scalar_one_or_none() if workflow_id else None
+        select(Workflow.name, Workflow.path).where(Workflow.id == workflow_id)
+    )).one_or_none() if workflow_id else None
     payload = getattr(run, "trigger_payload", None) or {}
     ref = payload.get("ref") or f"refs/heads/{getattr(run, 'head_branch', '')}"
     full_name = repo.full_name if repo else ""
@@ -1224,9 +1226,10 @@ async def create_workflow_run(
         actor_id=actor.id,
         trigger_payload=payload,
     )
-    db.add(run)
-    await db.flush()
 
+    # Everything read here is read before the run's INSERT: SQLite has one
+    # writer, and from the first write to the commit every other writer
+    # waits, so reads after it stretched that wait.
     # Organization variables the repository can use, its own over them.
     from app.services.org_variables import vars_context
 
@@ -1237,6 +1240,10 @@ async def create_workflow_run(
             select(Secret).where(Secret.repo_id == workflow.repo_id)
         )).scalars().all()
     }
+    identity = await github_identity_context(db, run)
+
+    db.add(run)
+    await db.flush()
     expression_context = {
         "inputs": payload.get("inputs", {}),
         "vars": variables,
@@ -1255,7 +1262,7 @@ async def create_workflow_run(
             "run_number": run.run_number,
             "sha": head_sha,
             "server_url": settings.BASE_URL,
-            **await github_identity_context(db, run),
+            **identity,
         },
     }
 
@@ -1759,7 +1766,7 @@ async def dispatch_event(
     workflows_yaml = await detect_workflows(repository.disk_path, ref_spec)
     result = await db.execute(select(Workflow).where(Workflow.repo_id == repository.id))
     known = {workflow.path: workflow for workflow in result.scalars().all()}
-    runs = []
+    matched = []
     for workflow_yaml in workflows_yaml:
         path = workflow_yaml.get("_path", "")
         workflow = known.get(path)
@@ -1788,6 +1795,13 @@ async def dispatch_event(
             # None: the secrets are the repository's, read at job promotion.
             secrets=payload.get("secrets"),
         )
+        matched.append((workflow, workflow_yaml))
+
+    # Runs are created only after every match is read (reusable workflows
+    # come from git), so this request holds SQLite's writer lock only for
+    # the runs themselves.
+    runs = []
+    for workflow, workflow_yaml in matched:
         run = await create_workflow_run(
             db,
             workflow,

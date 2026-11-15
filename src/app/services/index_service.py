@@ -3,7 +3,7 @@
 import logging
 import os
 
-from sqlalchemy import delete
+from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.git.bare_repo import list_tree, get_file_content, get_log
@@ -88,7 +88,8 @@ async def index_repository(db: AsyncSession, repo: Repository) -> int:
     ref = repo.default_branch or "main"
     repo_id = repo.id
     full_name = repo.full_name
-    rows: list = []
+    file_rows: list[dict] = []
+    commit_rows: list[dict] = []
 
     # SQLite has one writer at a time. Reading the tree takes a git
     # subprocess per file, which for a repository of a few thousand files is
@@ -122,7 +123,7 @@ async def index_repository(db: AsyncSession, repo: Repository) -> int:
 
             language = _detect_language(path)
 
-            rows.append(FileContent(
+            file_rows.append(dict(
                 repo_id=repo_id,
                 file_path=path,
                 blob_sha=sha,
@@ -138,7 +139,7 @@ async def index_repository(db: AsyncSession, repo: Repository) -> int:
     try:
         commits = await get_log(disk_path, ref, max_count=500)
         for commit in commits:
-            rows.append(CommitMetadata(
+            commit_rows.append(dict(
                 repo_id=repo_id,
                 commit_sha=commit["sha"],
                 author_name=commit.get("author_name"),
@@ -155,7 +156,14 @@ async def index_repository(db: AsyncSession, repo: Repository) -> int:
     # Replace the index: the only part that writes.
     await db.execute(delete(FileContent).where(FileContent.repo_id == repo_id))
     await db.execute(delete(CommitMetadata).where(CommitMetadata.repo_id == repo_id))
-    db.add_all(rows)
+    # Core executemany, one statement per table: ORM inserts went one row at
+    # a time (fetching each new id), about a thousand statements inside
+    # SQLite's write lock for a repository with history.
+    if file_rows:
+        await db.execute(insert(FileContent), file_rows)
+    if commit_rows:
+        await db.execute(insert(CommitMetadata), commit_rows)
     await db.commit()
-    logger.info("Indexed %d items for repo %s", len(rows), full_name)
-    return len(rows)
+    count = len(file_rows) + len(commit_rows)
+    logger.info("Indexed %d items for repo %s", count, full_name)
+    return count
