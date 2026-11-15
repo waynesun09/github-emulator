@@ -166,11 +166,11 @@ async def test_every_job_runs_once_when_runners_abandon_polls(
             delivered[job_id] += 1
             last = job_id
             # As the runner does once it has dispatched the job.
-            ack = await _retrying(lambda: client.delete(
+            ack = await _retrying(lambda job_id=job_id: client.delete(
                 f"/_apis/distributedtask/pools/1/messages/{job_id}", headers=headers))
             assert ack.status_code == 200
             await asyncio.sleep(rng.uniform(0, 0.03))
-            done = await _retrying(lambda: client.post(
+            done = await _retrying(lambda job_id=job_id: client.post(
                 f"/_apis/distributedtask/jobs/{job_id}/complete",
                 json={"result": "Succeeded"}, headers=headers,
             ))
