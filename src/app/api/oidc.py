@@ -8,8 +8,8 @@ from app.models.actions import Workflow
 from app.models.branch import Branch
 from app.models.repository import Repository
 from app.models.user import User
-from app.services.oidc_service import issue_for_job, issuer, jwks, subject_for
 from app.services.job_token_service import validate_job_token
+from app.services.oidc_service import issue_for_job, issuer, jwks, subject_for
 
 router = APIRouter(tags=["oidc"])
 

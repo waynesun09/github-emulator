@@ -17,7 +17,6 @@ from app.models.repository import Repository
 from app.services.job_token_service import issue_job_token
 from tests.conftest import auth_headers  # noqa: F401 - keeps fixture import style
 
-
 TRIAGE_PERMISSIONS = {
     "actions": "write",
     "contents": "read",
