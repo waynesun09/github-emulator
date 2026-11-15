@@ -49,6 +49,8 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 34 | fix-collaborator-permission-bot | 99dca56 | Stacked on 18. An App's bot with no collaborator row reports `none` (bt-f4) |
 | 35 | fix-repo-visibility-sync | 3df0033 | Repository update keeps `private` and `visibility` in step (bt-f4) |
 | 36 | fix-jobs-list-unstarted | a15caa9 | A run's jobs list leaves out jobs still waiting on `needs`, as GitHub does (probed by bt-f3) |
+| 37 | fix-run-route-ownership | 91ee48b | Actions writes need the caller's permission: write for dispatch, cancel, re-run and artifacts; admin for secrets, variables and Actions permissions. Cancel acts only on a run of the repository in its path. Job and installation tokens keep their checks at authentication |
+| 38 | fix-sqlite-pool-size | 6e8b497 | SQLite connection pool 20 + 40 (`SQLITE_POOL_SIZE`, `SQLITE_MAX_OVERFLOW`); the default 5 + 10 was exhausted at 12 runners (bt-f4) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
