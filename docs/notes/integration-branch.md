@@ -65,6 +65,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 50 | fix-stale-row-404 | fff87e5 | An update of a row another request deleted (a runner reporting a job after its repository was deleted) answered 500 with StaleDataError; now 404 (bt-f4, agents run 43726152193) |
 | 51 | perf-dispatch-writer-lock (on ci-self-contained) | 51d6308 | Run creation, job promotion and reindexing keep their reads out of SQLite's write lock: reads before the first write, column-only lookups, growing collections no longer eager, one supersede query per promotion, executemany for the search index (window: 64 -> 14, 68 -> 13, ~1000 -> 4 statements; bt-f4, agents run 43726152193) |
 | 52 | fix-issue-number-race | 1ebb24f | Issue and pull request numbers come from one atomic UPDATE ... RETURNING: two creates at once took the same number and the second answered 500 (unique constraint); open_issues_count lost increments; GraphQL creates now count as open |
+| 53 | ci-install-from-lock | c8771e2 | The action, smoke workflow and container images install uv.lock's versions with --require-hashes instead of requirements.txt's >= floors (which took each package's newest release on the day of the run); requirements.txt and its Dependabot pip entry removed |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
