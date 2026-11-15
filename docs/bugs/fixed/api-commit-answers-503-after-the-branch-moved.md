@@ -14,10 +14,12 @@ failed with `database is locked`:
 - `PUT contents` answered 503, the commit was on the branch, and the
   client's retry, still holding the old blob sha, got a conflict.
 
-The request read the repository first, so its transaction held a read
-snapshot. SQLite cannot turn that into a write transaction once another
-writer has committed, and it reports this at once as `database is locked`;
-the busy timeout does not apply.
+The cause of the lock is not yet confirmed. The database driver starts a
+transaction only at the first write, so the instant snapshot conflict
+(below) is unlikely; the more likely cause is another request holding
+SQLite's writer lock past the 5 s busy timeout. The writer-lock logging
+(`app/database_diag.py`) is there to name it. The fix below holds either
+way.
 
 ## Fix
 
@@ -32,9 +34,11 @@ three routes:
 
 ## Evidence
 
-- Plain `sqlite3`, WAL: connection A reads in a transaction, B commits an
-  update, A's update fails with `database is locked` after 0.00 s,
-  `sqlite_errorname` `SQLITE_BUSY_SNAPSHOT`, with a 5 s busy timeout.
+- Plain `sqlite3`, WAL, explicit transactions: connection A reads in a
+  transaction, B commits an update, A's update fails with `database is
+  locked` after 0.00 s (`SQLITE_BUSY_SNAPSHOT`). With the driver's default
+  handling a read does not open a transaction, so this is one possible
+  cause, not the observed one.
 - `tests/test_api_commit_lock_replay.py`: a brief lock is replayed through
   (200); a held lock answers 503 with the branch unchanged, and the same
   request then succeeds; `createCommitOnBranch` the same. All three fail on
