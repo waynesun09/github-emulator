@@ -57,6 +57,12 @@ async def dispatch_ready_jobs(db: AsyncSession, run_id: int) -> list[WorkflowJob
         strategy_context,
     )
 
+    # One promotion per run at a time. Two jobs of a run finishing together
+    # each read their siblings; without a lock, under PostgreSQL READ
+    # COMMITTED each could miss the other's completion and leave a job that
+    # needs both waiting for good. SQLite's single writer serialised them
+    # already; FOR UPDATE is left out on SQLite.
+    await db.execute(select(WorkflowRun.id).where(WorkflowRun.id == run_id).with_for_update())
     result = await db.execute(
         select(WorkflowJob).where(WorkflowJob.run_id == run_id)
     )

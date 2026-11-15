@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 
 import httpx
 from sqlalchemy import or_, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Webhook, WebhookDelivery
@@ -265,10 +265,13 @@ async def _deliver(sessions, targets: list[HookTarget], event: str, payload: dic
                     db.add_all([d for d in deliveries if d.webhook_id in live])
                     await db.commit()
                 return
-            except OperationalError:
-                # SQLite reported a lock; the request that caused the event
-                # may still be writing.
-                if attempt == RECORD_ATTEMPTS - 1:
+            except DBAPIError as exc:
+                # SQLite reported a lock (or PostgreSQL a serialization
+                # failure); the request that caused the event may still be
+                # writing.
+                from app.database_retry import is_sqlite_database_locked
+
+                if attempt == RECORD_ATTEMPTS - 1 or not is_sqlite_database_locked(exc):
                     raise
                 await asyncio.sleep(0.05 * (attempt + 1))
     except Exception:

@@ -1,0 +1,85 @@
+# Spike only: the same write load against SQLite (synchronous FULL and NORMAL)
+# and PostgreSQL 16 on a hosted runner. Runs when spike-postgres is pushed to
+# spike-postgres-bench, or by hand; results in the job summary.
+name: db bench
+
+on:
+  push:
+    branches: [spike-postgres-bench]
+  workflow_dispatch:
+    inputs:
+      workers: {description: Concurrent clients, default: "12"}
+      seconds: {description: Seconds per setting, default: "60"}
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    # ubuntu-24.04 ships PostgreSQL 16, stopped by default.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+        with:
+          enable-cache: false
+      - name: Install the emulator with the PostgreSQL driver
+        run: uv sync -q --frozen --python 3.12 --extra postgres
+      - name: Start PostgreSQL (throwaway data, no fsync)
+        id: pg
+        run: |
+          pw=$(openssl rand -hex 16)
+          echo "::add-mask::$pw"
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -q -c "ALTER USER postgres PASSWORD '$pw'" \
+            -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" -c "ALTER SYSTEM SET max_connections = 200"
+          sudo systemctl restart postgresql.service
+          echo "url=postgresql+asyncpg://postgres:$pw@127.0.0.1:5432" >> "$GITHUB_OUTPUT"
+      - name: Bench
+        env:
+          PG_URL: ${{ steps.pg.outputs.url }}
+          WORKERS: ${{ inputs.workers || '12' }}
+          SECONDS_EACH: ${{ inputs.seconds || '60' }}
+        run: |
+          run() {
+            label=$1; shift
+            data=$(mktemp -d)
+            env GITHUB_EMULATOR_DATA_DIR="$data" GITHUB_EMULATOR_BASE_URL=http://127.0.0.1:8123 "$@" \
+              .venv/bin/python -m uvicorn app.main:app --app-dir src --host 127.0.0.1 --port 8123 --log-level warning \
+              >"$RUNNER_TEMP/$label.log" 2>&1 &
+            pid=$!
+            for _ in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8123/api/v3/rate_limit -H "Authorization: token ghp_admin_default_token" && break; sleep 0.5; done
+            cpu0=$(awk '{print $14 + $15}' /proc/$pid/stat)
+            .venv/bin/python scripts/db-write-bench.py http://127.0.0.1:8123 "$WORKERS" "$SECONDS_EACH" 4 >"$RUNNER_TEMP/$label.json"
+            cpu1=$(awk '{print $14 + $15}' /proc/$pid/stat)
+            kill $pid; wait $pid 2>/dev/null || true
+            cpu=$(echo "scale=0; ($cpu1 - $cpu0) / $(getconf CLK_TCK) * 100 / $SECONDS_EACH" | bc)
+            holds=$(grep -c "writer lock held" "$RUNNER_TEMP/$label.log" || true)
+            locked=$(grep -c "database is locked after" "$RUNNER_TEMP/$label.log" || true)
+            errors=$(grep -cE "^[a-zA-Z_.]+(Error|Exception)[:(]" "$RUNNER_TEMP/$label.log" || true)
+            jq -r --arg l "$label" --arg cpu "$cpu" --arg h "$holds" --arg k "$locked" --arg e "$errors" \
+              '"| \($l) | \(.req_per_s) | \(.issues_per_s) | \(.ms.issue.p50) / \(.ms.issue.p95) / \(.ms.issue.max) | \(.ms.label.p95) | \(.statuses | to_entries | map("\(.key):\(.value)") | join(" ")) | \($h) | \($k) | \($e) | \($cpu)% |"' \
+              "$RUNNER_TEMP/$label.json" | tee -a "$GITHUB_STEP_SUMMARY"
+            rm -rf "$data"
+          }
+          {
+            echo "### $(nproc) vCPU, $WORKERS clients, ${SECONDS_EACH}s each"
+            echo "| setting | req/s | issues/s | issue ms p50/p95/max | label p95 | statuses | holds >1s | locked | errors | emulator CPU |"
+            echo "|---|---|---|---|---|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for round in 1 2; do
+            run "sqlite-full-$round"
+            run "sqlite-normal-$round" GITHUB_EMULATOR_SQLITE_SYNCHRONOUS=NORMAL
+            sudo -u postgres psql -q -c "DROP DATABASE IF EXISTS bench" -c "CREATE DATABASE bench"
+            run "postgres-$round" GITHUB_EMULATOR_DATABASE_URL="$PG_URL/bench"
+          done
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: db-bench-logs
+          path: ${{ runner.temp }}/*.log

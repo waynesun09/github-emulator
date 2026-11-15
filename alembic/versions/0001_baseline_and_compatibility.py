@@ -66,10 +66,16 @@ def upgrade() -> None:
     )
 
     if "client_id" in _columns(bind, "github_apps"):
+        # 16 random bytes as hex: SQLite's randomblob, PostgreSQL's md5 of a
+        # random value (same length and alphabet).
+        random_hex = (
+            "md5(random()::text || id::text)" if bind.dialect.name == "postgresql"
+            else "lower(hex(randomblob(16)))"
+        )
         bind.execute(
             sa.text(
                 "UPDATE github_apps "
-                "SET client_id = 'Iv1.' || lower(hex(randomblob(16))) "
+                f"SET client_id = 'Iv1.' || {random_hex} "
                 "WHERE client_id IS NULL OR client_id = ''"
             )
         )

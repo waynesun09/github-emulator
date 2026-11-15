@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import select
 
 from tests.conftest import auth_headers
-from app.models.actions import Runner, WorkflowJob
+from app.models.actions import Runner, Workflow, WorkflowJob, WorkflowRun
 
 API = "/api/v3"
 
@@ -33,7 +33,16 @@ async def _repo_with_runner(client, token, db, name, *, job_status="completed"):
     await db.commit()
     await db.refresh(runner)
 
-    job = WorkflowJob(run_id=1, name="Route", status=job_status,
+    # A real run, so the job's run_id holds where foreign keys are enforced.
+    workflow = Workflow(repo_id=repo_id, name="CI", path=".github/workflows/ci.yml")
+    db.add(workflow)
+    await db.flush()
+    run = WorkflowRun(workflow_id=workflow.id, repo_id=repo_id, head_sha="0" * 40,
+                      head_branch="main", event="push", status="completed",
+                      run_number=1, run_attempt=1, actor_id=created.json()["owner"]["id"])
+    db.add(run)
+    await db.flush()
+    job = WorkflowJob(run_id=run.id, name="Route", status=job_status,
                       conclusion="success" if job_status == "completed" else None,
                       runner_id=runner.id, runner_name="dead-runner")
     db.add(job)

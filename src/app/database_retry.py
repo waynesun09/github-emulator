@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -13,10 +13,22 @@ from app.middleware.error_handler import RetryableDatabaseError
 logger = logging.getLogger("github_emulator.database")
 
 
+# PostgreSQL's "try the transaction again" codes: serialization_failure and
+# deadlock_detected.
+_RETRY_SQLSTATES = {"40001", "40P01"}
+
+
 def is_sqlite_database_locked(exc: BaseException) -> bool:
-    """Return True when an exception is SQLite's transient writer lock."""
-    if not isinstance(exc, OperationalError):
+    """Return True when a write failed only because another one won.
+
+    SQLite: its writer lock was held past the busy timeout. PostgreSQL: a
+    serialization failure or deadlock, where the transaction can simply run
+    again. Callers roll back and replay, or answer 503 with Retry-After.
+    """
+    if not isinstance(exc, DBAPIError):
         return False
+    if getattr(exc.orig, "sqlstate", None) in _RETRY_SQLSTATES:
+        return True
     return "database is locked" in str(exc).lower()
 
 
@@ -47,7 +59,7 @@ async def commit_with_sqlite_retry(
         try:
             await db.commit()
             return
-        except OperationalError as exc:
+        except DBAPIError as exc:
             if not is_sqlite_database_locked(exc):
                 raise
             await db.rollback()
