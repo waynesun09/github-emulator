@@ -291,7 +291,7 @@ async def test_rate_limit_is_configurable(client, test_user, test_token, monkeyp
     gate) stopped for the rest of the hour once a busy suite used 5000.
     """
     monkeypatch.setattr("app.middleware.rate_limit.settings.RATE_LIMIT", 1_000_000)
-    headers = {"Authorization": f"token {test_token}"}
+    headers = auth_headers(test_token)
     first = await client.get(f"{API}/user", headers=headers)
     assert first.headers["X-RateLimit-Limit"] == "1000000"
     used = int(first.headers["X-RateLimit-Used"])
