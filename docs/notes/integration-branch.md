@@ -66,6 +66,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 51 | perf-dispatch-writer-lock (on ci-self-contained) | 51d6308 | Run creation, job promotion and reindexing keep their reads out of SQLite's write lock: reads before the first write, column-only lookups, growing collections no longer eager, one supersede query per promotion, executemany for the search index (window: 64 -> 14, 68 -> 13, ~1000 -> 4 statements; bt-f4, agents run 43726152193) |
 | 52 | fix-issue-number-race | 1ebb24f | Issue and pull request numbers come from one atomic UPDATE ... RETURNING: two creates at once took the same number and the second answered 500 (unique constraint); open_issues_count lost increments; GraphQL creates now count as open |
 | 53 | ci-install-from-lock | c8771e2 | The action, smoke workflow and container images install uv.lock's versions with --require-hashes instead of requirements.txt's >= floors (which took each package's newest release on the day of the run); requirements.txt and its Dependabot pip entry removed |
+| 54 | fix-label-create-race | 120f492 | Two requests adding the same new label to issues at once: the second answered 500 (unique constraint); now INSERT ... ON CONFLICT DO NOTHING and read back |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
