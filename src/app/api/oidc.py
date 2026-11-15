@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.api.deps import DbSession
 from app.models.actions import Workflow
+from app.models.branch import Branch
 from app.models.repository import Repository
 from app.models.user import User
 from app.services.oidc_service import issue_for_job, issuer, jwks, subject_for
@@ -16,11 +17,27 @@ router = APIRouter(tags=["oidc"])
 @router.get("/.well-known/openid-configuration")
 async def configuration(request: Request):
     base = issuer()
+    # The fields GitHub's own discovery document carries; jwks_uri is the
+    # path GitHub advertises (/.well-known/jwks.json is still served).
     return {
         "issuer": base,
-        "jwks_uri": f"{base}/.well-known/jwks.json",
+        "jwks_uri": f"{base}/.well-known/jwks",
+        "subject_types_supported": ["public", "pairwise"],
+        "response_types_supported": ["id_token"],
+        "claims_supported": CLAIMS_SUPPORTED,
         "id_token_signing_alg_values_supported": ["RS256"],
+        "scopes_supported": ["openid"],
     }
+
+
+# The claims a token from this issuer carries.
+CLAIMS_SUPPORTED = [
+    "sub", "aud", "exp", "iat", "iss", "jti", "nbf", "ref", "sha", "repository", "repository_id",
+    "repository_owner", "repository_owner_id", "run_id", "run_number", "run_attempt", "actor",
+    "actor_id", "workflow", "workflow_ref", "head_ref", "base_ref", "event_name", "ref_type",
+    "ref_protected", "repository_visibility", "check_run_id", "job_workflow_ref", "job_workflow_sha",
+    "runner_environment",
+]
 
 
 @router.get("/.well-known/jwks.json")
@@ -29,6 +46,14 @@ async def keys():
     # GitHub's Actions issuer serves its keys at /.well-known/jwks; relying
     # parties configured for GitHub use that path directly.
     return jwks()
+
+
+def _visibility(repository: Repository | None) -> str:
+    if repository is None:
+        return ""
+    if repository.visibility == "internal":
+        return "internal"
+    return "private" if repository.private else "public"
 
 
 def _owner_id(repository: Repository | None) -> str:
@@ -84,6 +109,15 @@ async def actions_token(request: Request, db: DbSession, audience: str | None = 
     ref = (run.trigger_payload or {}).get("ref") or f"refs/heads/{run.head_branch}"
     workflow_path = workflow.path if workflow else ""
     workflow_ref = f"{full_name}/{workflow_path}@{ref}" if workflow_path else ""
+    pull_request = (run.trigger_payload or {}).get("pull_request") or {}
+    ref_protected = False
+    if repository is not None and ref.startswith("refs/heads/"):
+        branch = (
+            await db.execute(
+                select(Branch).where(Branch.repo_id == repository.id, Branch.name == ref[len("refs/heads/"):])
+            )
+        ).scalar_one_or_none()
+        ref_protected = bool(branch and branch.protected)
 
     claims = {
         "sub": subject_for(full_name, run.event, ref),
@@ -106,6 +140,14 @@ async def actions_token(request: Request, db: DbSession, audience: str | None = 
         "job_workflow_ref": job.workflow_ref or workflow_ref,
         "job_workflow_sha": run.head_sha,
         "ref": ref,
+        "ref_type": "tag" if ref.startswith("refs/tags/") else "branch",
+        # Strings, as GitHub writes them.
+        "ref_protected": "true" if ref_protected else "false",
+        "head_ref": str((pull_request.get("head") or {}).get("ref") or ""),
+        "base_ref": str((pull_request.get("base") or {}).get("ref") or ""),
+        "repository_visibility": _visibility(repository),
+        # GitHub's check run for a job has the job's id.
+        "check_run_id": str(job.id),
         "sha": run.head_sha,
         "event_name": run.event,
         "actor": actor.login if actor else "",

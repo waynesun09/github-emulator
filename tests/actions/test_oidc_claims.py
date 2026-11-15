@@ -112,6 +112,47 @@ async def test_claims_describe_the_run_not_the_request(
     assert claims["sub"] == f"repo:{repo['full_name']}:ref:refs/heads/main"
     # The owner's id, as the REST API reports it for the repository's owner.
     assert claims["repository_owner_id"] == str(repo["owner"]["id"])
+    # The claims GitHub adds for a branch push or dispatch, all strings.
+    assert claims["ref_type"] == "branch"
+    assert claims["ref_protected"] == "false"
+    assert claims["head_ref"] == ""
+    assert claims["base_ref"] == ""
+    assert claims["repository_visibility"] == ("private" if repository.private else "public")
+    assert claims["check_run_id"] == str(job.id)
+    # Valid from five minutes before issue, for five minutes after.
+    assert claims["iat"] - claims["nbf"] == 300
+    assert claims["exp"] - claims["iat"] == 300
+
+
+@pytest.mark.asyncio
+async def test_discovery_matches_githubs_document(client):
+    configuration = (await client.get("/.well-known/openid-configuration")).json()
+    assert configuration["jwks_uri"] == "http://testserver/.well-known/jwks"
+    assert configuration["response_types_supported"] == ["id_token"]
+    assert configuration["subject_types_supported"] == ["public", "pairwise"]
+    assert configuration["scopes_supported"] == ["openid"]
+    for claim in ("sub", "repository_owner_id", "ref_type", "check_run_id", "job_workflow_ref"):
+        assert claim in configuration["claims_supported"]
+
+
+@pytest.mark.asyncio
+async def test_pull_request_claims_carry_head_and_base_refs(client, db_session, test_repo_with_init):
+    _owner, _name, repo = test_repo_with_init
+    _repository, run, job = await _seed_job(
+        db_session, repo["full_name"], TRIAGE_PERMISSIONS, event="pull_request"
+    )
+    run.trigger_payload = {"ref": "refs/pull/3/merge",
+                           "pull_request": {"head": {"ref": "feature"}, "base": {"ref": "main"}}}
+    await db_session.commit()
+    response = await client.get(
+        "/actions/oidc/token?api-version=2.0&audience=x",
+        headers={"Authorization": f"Bearer {issue_job_token(job)}"},
+    )
+    assert response.status_code == 200, response.text
+    claims = jwt.get_unverified_claims(response.json()["value"])
+    assert claims["head_ref"] == "feature"
+    assert claims["base_ref"] == "main"
+    assert claims["ref"] == "refs/pull/3/merge"
 
 
 @pytest.mark.asyncio
