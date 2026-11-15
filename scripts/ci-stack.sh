@@ -60,6 +60,13 @@
 #                   reaches the emulator. It serves its own repositories and
 #                   fetches any other from the real host, at the address
 #                   looked up before the switch (raw-upstream-addr).
+#   CI_STACK_RAW_ADDR  with CI_STACK_RAW_HOST: answer raw.githubusercontent.com
+#                   with this IPv4 address instead of this machine's, added
+#                   to lo. For a client that refuses private addresses
+#                   (Fullsend's fetch guard): give a public address the job
+#                   never needs to reach, e.g. 185.199.108.200, unused in
+#                   GitHub's raw-content block. It must not be loopback or
+#                   the real host's address, which the fallback above uses.
 #   GITHUB_EMULATOR_*  any emulator setting in this environment reaches the
 #                   emulator, e.g. GITHUB_EMULATOR_RATE_LIMIT=1000000 for a
 #                   suite whose client paces itself on X-RateLimit-Remaining.
@@ -90,6 +97,11 @@ UPSTREAM_SHA256="${CI_STACK_UPSTREAM_RUNNER_SHA256:-baebf204307bac6193480852732f
 TLS="${CI_STACK_TLS:-0}"
 RAW_HOST="${CI_STACK_RAW_HOST:-0}"
 RAW_NAME=raw.githubusercontent.com
+RAW_ADDR="${CI_STACK_RAW_ADDR:-}"
+if [ -n "$RAW_ADDR" ] && { [ "$RAW_HOST" != 1 ] || [ "$BIND" != 0.0.0.0 ] || ! [[ "$RAW_ADDR" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$RAW_ADDR" == 127.* ]]; }; then
+  echo "CI_STACK_RAW_ADDR=$RAW_ADDR needs CI_STACK_RAW_HOST=1, CI_STACK_BIND=0.0.0.0 and a non-loopback IPv4 address" >&2
+  exit 2
+fi
 if [ "$RAW_HOST" = 1 ] && { [ "$LOCALHOST_DNS" != 1 ] || [ "$TLS" != 1 ] || [ "$PORT" != 443 ]; }; then
   echo "CI_STACK_RAW_HOST=1 needs CI_STACK_LOCALHOST_DNS=1, CI_STACK_TLS=1 and CI_STACK_PORT=443" >&2
   exit 2
@@ -200,8 +212,14 @@ localhost_dns() {
       echo "CI_STACK_RAW_HOST: could not look up the real $RAW_NAME; other repositories will 404" >&2
       rm -f "$DIR/raw-upstream-addr"
     fi
-    extra+=(--address="/$RAW_NAME/$ip")
-    echo "$RAW_NAME -> $ip"
+    local raw_ip="${RAW_ADDR:-$ip}"
+    if [ -s "$DIR/raw-upstream-addr" ] && [ "$(cat "$DIR/raw-upstream-addr")" = "$raw_ip" ]; then
+      echo "CI_STACK_RAW_ADDR: $raw_ip is the real $RAW_NAME; pick another address" >&2
+      exit 2
+    fi
+    ip -4 -o addr show | grep -q " $raw_ip/" || sudo ip addr add "$raw_ip/32" dev lo
+    extra+=(--address="/$RAW_NAME/$raw_ip")
+    echo "$RAW_NAME -> $raw_ip"
   fi
   sudo dnsmasq --listen-address=127.0.0.2 --bind-interfaces --port=53 --no-resolv --no-hosts \
     --server="$upstream" --address="/$HOST/$ip" ${extra[@]+"${extra[@]}"} --pid-file="$DIR/dnsmasq.pid"

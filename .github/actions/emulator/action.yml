@@ -36,6 +36,13 @@ inputs:
       Also answer raw.githubusercontent.com on this VM, for a client that
       hard-codes github.com's raw host. Needs localhost-dns, tls and port 443.
     default: "false"
+  raw-addr:
+    description: >
+      With raw-host, the IPv4 address raw.githubusercontent.com resolves to,
+      instead of this VM's private one. For a client that refuses private
+      addresses: a public address the job never needs to reach, e.g.
+      185.199.108.200. It is added to lo; the emulator listens on it.
+    default: ""
   upstream-token:
     description: >
       Token the emulator uses to resolve and download public actions from
@@ -122,6 +129,7 @@ runs:
         CI_STACK_SYSTEM_TRUST: ${{ inputs.system-trust == 'true' && '1' || '0' }}
         CI_STACK_LOCALHOST_DNS: ${{ inputs.localhost-dns == 'true' && '1' || '0' }}
         CI_STACK_RAW_HOST: ${{ inputs.raw-host == 'true' && '1' || '0' }}
+        CI_STACK_RAW_ADDR: ${{ inputs.raw-addr }}
         GITHUB_EMULATOR_ACTIONS_UPSTREAM_TOKEN: ${{ inputs.upstream-token }}
         CI_STACK_RUNNERS: ${{ inputs.runners }}
         CI_STACK_RUNNER_KIND: ${{ inputs.runner-kind }}
