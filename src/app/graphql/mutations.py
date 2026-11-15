@@ -52,6 +52,14 @@ class CreateIssueInput:
     label_ids: Optional[list[strawberry.ID]] = None
     milestone_id: Optional[strawberry.ID] = None
     client_mutation_id: Optional[str] = None
+    # GitHub's input also has these, and `gh issue create` sends projectIds
+    # even when empty. Accepted so such requests validate; projects, issue
+    # templates, issue types and sub-issues are not modelled, so ignored.
+    project_ids: Optional[list[strawberry.ID]] = None
+    project_v2_ids: Optional[list[strawberry.ID]] = None
+    issue_template: Optional[str] = None
+    issue_type_id: Optional[strawberry.ID] = None
+    parent_issue_id: Optional[strawberry.ID] = None
 
 
 @strawberry.input
@@ -426,6 +434,24 @@ def _decode_typed_node_id(node_id: str) -> tuple[str, int] | None:
         return kind, int(raw)
     except Exception:
         return None
+
+
+async def _issue_id_for_subject(db, node_id: str) -> int:
+    """The issue row behind a comment or reaction subject.
+
+    GitHub accepts an Issue or a PullRequest node id as the subject of
+    ``addComment`` and ``addReaction``. A pull request's conversation lives
+    on its backing issue here, so a PullRequest id resolves to that issue.
+    """
+    from app.models.pull_request import PullRequest as PRModel
+
+    decoded = _decode_typed_node_id(node_id)
+    if decoded and decoded[0] == "PullRequest":
+        issue_id = (
+            await db.execute(select(PRModel.issue_id).where(PRModel.id == decoded[1]))
+        ).scalar_one_or_none()
+        return issue_id if issue_id is not None else -1
+    return _decode_node_id(node_id)
 
 
 async def _review_thread_root(info: Info, thread_id: str, mutation: str):
@@ -907,7 +933,7 @@ class Mutation:
         current_user = _require_auth(info)
         db = info.context["db"]
 
-        subject_id = _decode_node_id(input.subject_id)
+        subject_id = await _issue_id_for_subject(db, input.subject_id)
 
         # Verify the issue exists
         result = await db.execute(
@@ -1269,7 +1295,7 @@ class Mutation:
         current_user = _require_auth(info)
         db = info.context["db"]
 
-        subject_id = _decode_node_id(input.subject_id)
+        subject_id = await _issue_id_for_subject(db, input.subject_id)
         from app.models.issue import Issue as IssueModel
 
         # Reactions here are on issues. A missing subject and one in a hidden
