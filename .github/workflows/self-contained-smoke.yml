@@ -158,6 +158,7 @@ jobs:
           host: ${{ matrix.host }}
           localhost-dns: ${{ matrix.dns }}
           raw-host: ${{ matrix.dns }}
+          upstream-token: ${{ github.token }}
           runners: "2"
           runner-env: |
             SMOKE_RUNNER_ENV=a,b c
@@ -234,6 +235,9 @@ jobs:
       CI_STACK_SYSTEM_TRUST: ${{ matrix.tls }}
       CI_STACK_LOCALHOST_DNS: ${{ matrix.localhost_dns || '0' }}
       CI_STACK_DNS_EXTRA: ${{ matrix.dns_extra || '' }}
+      # Read-only job token, so resolving public actions does not share the
+      # anonymous API limit.
+      GITHUB_EMULATOR_ACTIONS_UPSTREAM_TOKEN: ${{ github.token }}
       PROBE_WAIT_SECONDS: "180"
       PROBE_LOG_DIR: /tmp/ci-stack/probe-logs
     steps:

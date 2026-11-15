@@ -36,6 +36,13 @@ inputs:
       Also answer raw.githubusercontent.com on this VM, for a client that
       hard-codes github.com's raw host. Needs localhost-dns, tls and port 443.
     default: "false"
+  upstream-token:
+    description: >
+      Token the emulator uses to resolve and download public actions from
+      github.com, e.g. the job's read-only github.token. Without one it
+      shares the anonymous API limit (60 an hour per IP) and a job that uses
+      actions can fail with 502 when that runs out.
+    default: ""
   runners:
     description: Runner processes, i.e. emulator jobs that run at once.
     default: "1"
@@ -115,6 +122,7 @@ runs:
         CI_STACK_SYSTEM_TRUST: ${{ inputs.system-trust == 'true' && '1' || '0' }}
         CI_STACK_LOCALHOST_DNS: ${{ inputs.localhost-dns == 'true' && '1' || '0' }}
         CI_STACK_RAW_HOST: ${{ inputs.raw-host == 'true' && '1' || '0' }}
+        GITHUB_EMULATOR_ACTIONS_UPSTREAM_TOKEN: ${{ inputs.upstream-token }}
         CI_STACK_RUNNERS: ${{ inputs.runners }}
         CI_STACK_RUNNER_KIND: ${{ inputs.runner-kind }}
         CI_STACK_UPSTREAM_RUNNER_VERSION: ${{ inputs.runner-version }}
