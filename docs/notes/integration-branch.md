@@ -53,7 +53,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 38 | fix-sqlite-pool-size | 6e8b497 | SQLite connection pool 20 + 40 (`SQLITE_POOL_SIZE`, `SQLITE_MAX_OVERFLOW`); the default 5 + 10 was exhausted at 12 runners (bt-f4) |
 | 39 | fix-github-context-fields | 66bac8a | `github.actor`, `actor_id`, `triggering_actor`, `api_url`, `graphql_url`, `repository_id`, `repository_owner_id`, `run_attempt` and `workflow_ref` filled where the emulator renders expressions and in the job message (so `GITHUB_ACTOR` and the rest are set); runs gain `run_started_at` and `display_title`, jobs `created_at`, `head_sha` and `head_branch` (bt-f3 A3, A5) |
 | 40 | fix-write-after-git | 65f1bb6 | Contents `PUT`/`DELETE` and `createCommitOnBranch` replay their database write through SQLite's writer lock, and if it persists move the branch back before the 503, so a retry succeeds (bt-f5: 12 `database is locked`) |
-| 41 | fix-raw-githubusercontent | 55b7e92 | Requests to `raw.githubusercontent.com` use the raw route; `CI_STACK_RAW_HOST=1` (action input `raw-host`) resolves that name to the VM and puts it in the certificate (bt-f5: URL-sourced harness fetches) |
+| 41 | fix-raw-githubusercontent | 55b7e92, 2c51565 | Requests to `raw.githubusercontent.com` use the raw route, and repositories the emulator lacks come from the real host; `CI_STACK_RAW_HOST=1` (action input `raw-host`) resolves that name to the VM and puts it in the certificate (bt-f5: URL-sourced harness fetches) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
