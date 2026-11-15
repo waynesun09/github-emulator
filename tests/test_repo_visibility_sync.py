@@ -52,7 +52,9 @@ async def test_visibility_sets_private(client, test_token):
 
 
 @pytest.mark.asyncio
-async def test_a_repository_made_public_is_readable_by_others(client, test_token, outsider_token):
+async def test_a_repository_made_public_is_readable_by_others(
+    client, test_token, outsider_token,  # noqa: F811
+):
     full_name = await _repo(client, test_token, private=True)
     assert (await client.get(f"{API}/repos/{full_name}", headers=auth_headers(outsider_token))).status_code == 404
     await _patch(client, test_token, full_name, {"private": False})
