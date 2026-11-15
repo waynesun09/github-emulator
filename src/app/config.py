@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     # SQLite database URL
     DATABASE_URL: str = ""
     SQLITE_BUSY_TIMEOUT_MS: int = 5000
+    # Pooled connections to a file database. A request holds one from its
+    # first query (authentication) until it ends, and WAL lets readers run
+    # side by side, so the pool, not SQLite, capped concurrency: at
+    # SQLAlchemy's default 5 + 10, a dozen runners polling and posting logs
+    # used all 15 and every other request queued for one.
+    SQLITE_POOL_SIZE: int = 20
+    SQLITE_MAX_OVERFLOW: int = 40
     SQLITE_WRITE_RETRY_ATTEMPTS: int = 2
     SQLITE_WRITE_RETRY_DELAY_MS: int = 100
 
