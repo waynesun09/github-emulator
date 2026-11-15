@@ -883,7 +883,48 @@ async def build_run_expression_context(db, run) -> dict:
             "run_number": run.run_number,
             "sha": run.head_sha,
             "server_url": settings.BASE_URL,
+            **await github_identity_context(db, run),
         },
+    }
+
+
+async def github_identity_context(db: AsyncSession, run: WorkflowRun) -> dict:
+    """The ``github`` context values that name who and what started the run.
+
+    GitHub sets each of these on every run; expressions rendered here (step
+    env, with:, if:) read ``${{ github.actor }}`` and the rest, and they were
+    empty: actor, actor_id, triggering_actor, api_url, graphql_url,
+    repository_id, repository_owner_id, run_attempt and workflow_ref (probed
+    side by side with GitHub). GitHub gives ids and run_attempt as strings.
+    """
+    # Read with getattr: callers may pass a partial run (tests do).
+    repo_id = getattr(run, "repo_id", None)
+    actor_id = getattr(run, "actor_id", None)
+    workflow_id = getattr(run, "workflow_id", None)
+    repo = (await db.execute(
+        select(Repository).where(Repository.id == repo_id)
+    )).scalar_one_or_none() if repo_id else None
+    actor = (await db.execute(
+        select(User).where(User.id == actor_id)
+    )).scalar_one_or_none() if actor_id else None
+    workflow = (await db.execute(
+        select(Workflow).where(Workflow.id == workflow_id)
+    )).scalar_one_or_none() if workflow_id else None
+    payload = getattr(run, "trigger_payload", None) or {}
+    ref = payload.get("ref") or f"refs/heads/{getattr(run, 'head_branch', '')}"
+    full_name = repo.full_name if repo else ""
+    login = actor.login if actor else ""
+    return {
+        "actor": login,
+        "actor_id": str(actor.id) if actor else "",
+        "triggering_actor": login,
+        "api_url": f"{settings.BASE_URL}/api/v3",
+        "graphql_url": f"{settings.BASE_URL}/api/graphql",
+        "repository_id": str(repo.id) if repo else "",
+        "repository_owner_id": str(repo.owner_id) if repo else "",
+        "run_attempt": str(getattr(run, "run_attempt", None) or 1),
+        "workflow": workflow.name if workflow else "",
+        "workflow_ref": f"{full_name}/{workflow.path}@{ref}" if workflow and full_name else "",
     }
 
 
@@ -1050,6 +1091,7 @@ async def create_workflow_run(
             "run_number": run.run_number,
             "sha": head_sha,
             "server_url": settings.BASE_URL,
+            **await github_identity_context(db, run),
         },
     }
 
