@@ -11,6 +11,10 @@ the same visibility check applies.
 
 A ref may be given as ``refs/heads/<name>`` or ``refs/tags/<name>``, as on
 github.com; a branch name containing a slash is not supported.
+
+The original path is kept in the scope as ``raw_host_path``: for a
+repository the emulator does not have, the raw route fetches that path from
+the real host when ``RAW_CONTENT_UPSTREAM_ADDR`` is set.
 """
 
 from app.config import settings
@@ -33,7 +37,7 @@ class RawHostMiddleware:
             if host in self.hosts:
                 path = _enterprise_path(scope["path"])
                 if path is not None:
-                    scope = dict(scope, path=path, raw_path=path.encode())
+                    scope = dict(scope, path=path, raw_path=path.encode(), raw_host_path=scope["path"])
         await self.app(scope, receive, send)
 
 
