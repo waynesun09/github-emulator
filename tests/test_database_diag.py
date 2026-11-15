@@ -67,3 +67,38 @@ async def test_waiting_for_the_lock_is_not_counted_as_holding_it(tmp_path, caplo
     holder.close()
     assert "writer lock held" not in caplog.text
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_slow_hold_says_where_its_time_went(tmp_path, caplog, monkeypatch):
+    monkeypatch.setattr("app.database_diag.settings.SQLITE_SLOW_WRITE_LOG_MS", 100)
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'g.db'}")
+    instrument_sqlite_engine(engine)
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE TABLE t (x INTEGER)"))
+    caplog.set_level(logging.WARNING, logger="github_emulator.database")
+    async with engine.begin() as conn:
+        await conn.execute(text("INSERT INTO t VALUES (1)"))
+        await asyncio.sleep(0.2)  # non-database work inside the transaction
+        await conn.execute(text("SELECT count(*) FROM t"))
+    assert "then 1 statements" in caplog.text
+    assert "before: SELECT count(*) FROM t" in caplog.text
+    gap = int(caplog.text.split("longest gap ")[1].split(" ms")[0])
+    assert gap >= 190
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_event_loop_is_reported(caplog, monkeypatch):
+    import time
+
+    from app.database_diag import watch_event_loop_lag
+
+    monkeypatch.setattr("app.database_diag.settings.EVENT_LOOP_LAG_LOG_MS", 100)
+    caplog.set_level(logging.WARNING, logger="github_emulator.database")
+    task = asyncio.create_task(watch_event_loop_lag(interval=0.05))
+    await asyncio.sleep(0.06)
+    time.sleep(0.3)  # block the loop
+    await asyncio.sleep(0.1)
+    task.cancel()
+    assert "event loop ran" in caplog.text
