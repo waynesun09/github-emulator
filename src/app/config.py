@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # SQLite database URL
     DATABASE_URL: str = ""
     SQLITE_BUSY_TIMEOUT_MS: int = 5000
+    # Log a write transaction that holds SQLite's writer lock this long
+    # (app/database_diag.py).
+    SQLITE_SLOW_WRITE_LOG_MS: int = 1000
     # Requests per token (or client address) per hour that the rate-limit
     # headers and GET /rate_limit report, as github.com does. Nothing is
     # refused at zero, but a client that paces itself on the headers waits
