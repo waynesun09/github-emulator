@@ -270,7 +270,9 @@ jobs:
           for got in "$got_glibc" "$got_dns" "$got_node" "$got_dotnet" "$got_container" "$got_go_pure" "$got_go_cgo"; do
             [ "$got" = "$ip" ] || { echo "::error::$CI_STACK_HOST resolved to '$got', not $ip"; exit 1; }
           done
-          [ "${tls%% *}" = 200 ] && [ "${tls##* }" = "$ip" ] || { echo "::error::https to $CI_STACK_HOST: $tls"; exit 1; }
+          if [ "${tls%% *}" != 200 ] || [ "${tls##* }" != "$ip" ]; then
+            echo "::error::https to $CI_STACK_HOST: $tls"; exit 1
+          fi
           # Any HTTP answer shows github.com still resolves and TLS works; an
           # anonymous request may get 403 from GitHub's rate limit for the
           # shared runner address. Only no answer (000) means DNS broke.
@@ -288,7 +290,9 @@ jobs:
             g="$(getent ahostsv4 "$name" | awk 'NR == 1 {print $1}')"
             c="$(podman run --rm --network host docker.io/library/alpine:3.20 nslookup -type=a "$name" 2>/dev/null | awk '/^Address: /{print $2}' | tail -1)"
             echo "| $name (extra) | glibc $g, container $c, want $want |" | tee -a "$GITHUB_STEP_SUMMARY"
-            [ "$g" = "$want" ] && [ "$c" = "$want" ] || { echo "::error::$name resolved to '$g' / '$c', not $want"; exit 1; }
+            if [ "$g" != "$want" ] || [ "$c" != "$want" ]; then
+              echo "::error::$name resolved to '$g' / '$c', not $want"; exit 1
+            fi
           done
       - name: Probe
         run: |
