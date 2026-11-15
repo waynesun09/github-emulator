@@ -739,8 +739,10 @@ class Mutation:
             raise ValueError(f"Repository with id {repo_id} not found")
 
         # Assign next issue number
-        issue_number = repo.next_issue_number
-        repo.next_issue_number += 1
+        from app.services.issue_number import allocate_issue_number
+
+        # Atomic, and counted as open as REST does.
+        issue_number = await allocate_issue_number(db, repo)
 
         new_issue = IssueModel(
             repo_id=repo.id,
@@ -1049,8 +1051,10 @@ class Mutation:
         base_sha = base_branch.sha if base_branch else "0" * 40
 
         # Allocate issue number
-        issue_number = repo.next_issue_number
-        repo.next_issue_number += 1
+        from app.services.issue_number import allocate_issue_number
+
+        # Atomic, and counted as open as REST does.
+        issue_number = await allocate_issue_number(db, repo)
 
         # Create the backing issue
         new_issue = IssueModel(
