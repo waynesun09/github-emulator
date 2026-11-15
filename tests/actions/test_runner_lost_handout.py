@@ -28,6 +28,7 @@ API = "/api/v3"
 def _fast_broker(monkeypatch):
     monkeypatch.setattr(dt, "_POLL_SECONDS", 1.0)
     monkeypatch.setattr(dt, "_POLL_INTERVAL_SECONDS", 0.02)
+    monkeypatch.setattr(dt, "_ACK_WINDOW", dt.timedelta(seconds=0.2))
     states = (dt._holding, dt._cancellations_sent, dt._poll_generation, dt._runner_locks, dt._acknowledged)
     for state in states:
         state.clear()
