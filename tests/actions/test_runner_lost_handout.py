@@ -118,6 +118,37 @@ async def test_a_job_its_runner_never_received_is_requeued_not_failed(
     assert job.status == "in_progress" and job.conclusion is None
 
 
+def _first_poll(client, headers, session_id, status="Online"):
+    """A runner that has had no message since it connected sends no lastMessageId."""
+    return client.get(
+        f"/_apis/distributedtask/pools/1/sessions/{session_id}/messages",
+        params={"status": status}, headers=headers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_job_handed_to_an_abandoned_first_poll_is_requeued(
+    client, db_session, test_user, test_token
+):
+    """bt-f2, run 43740835949: the runner's first long-poll timed out on its
+    side; the emulator handed the job to it anyway. The runner reconnected and
+    polled Online with no lastMessageId, and the job was failed after the grace
+    period though the runner never saw it."""
+    await _workflow(client, db_session, test_user, test_token, jobs=1)
+    headers, session_id = await _runner(client, test_token, "r1")
+    lost = (await _first_poll(client, headers, session_id)).json()
+    job_id = int(json.loads(lost["body"])["requestId"])
+    await asyncio.sleep(0.3)  # past the acknowledgement window
+
+    again = await _retrying(lambda: _first_poll(client, headers, session_id))
+    assert again.status_code == 200
+    assert int(json.loads(again.json()["body"])["requestId"]) == job_id
+
+    db_session.expire_all()
+    job = (await db_session.execute(select(WorkflowJob).where(WorkflowJob.id == job_id))).scalar_one()
+    assert job.status == "in_progress" and job.conclusion is None
+
+
 @pytest.mark.asyncio
 async def test_a_newer_poll_replaces_an_older_one_before_it_can_claim(
     client, db_session, test_user, test_token
