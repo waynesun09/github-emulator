@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.actions import WorkflowJob, WorkflowRun
 
+
 def _runs_after_unsuccessful_needs(job: WorkflowJob) -> bool:
     """Whether a job is still evaluated when a job it needs failed, was
     skipped or was cancelled: on GitHub, when its condition names a status
@@ -41,6 +42,12 @@ async def dispatch_ready_jobs(db: AsyncSession, run_id: int) -> list[WorkflowJob
     creation when it declares dependencies, because they may read
     ``needs.<job>.outputs.*``, which only exist once those jobs have finished.
     """
+    from app.services.workflow_expressions import (
+        JOB_NEEDS_KEY,
+        RUN_CANCELLED_KEY,
+        evaluate_job_if,
+        render_expressions,
+    )
     from app.services.workflow_service import (
         build_needs_context,
         build_run_expression_context,
@@ -48,12 +55,6 @@ async def dispatch_ready_jobs(db: AsyncSession, run_id: int) -> list[WorkflowJob
         needs_alias_entries,
         render_job_labels,
         strategy_context,
-    )
-    from app.services.workflow_expressions import (
-        JOB_NEEDS_KEY,
-        RUN_CANCELLED_KEY,
-        evaluate_job_if,
-        render_expressions,
     )
 
     result = await db.execute(
@@ -224,14 +225,13 @@ async def _expand_dynamic_matrix(
     GitHub ("Matrix vector 'include' does not contain any values"). Returns
     the instances with their expression contexts, or [] when the job failed.
     """
-    from app.services.workflow_expressions import evaluate_expression_value
+    from app.services.workflow_expressions import evaluate_expression_value, render_expressions
     from app.services.workflow_service import (
         _job_concurrency,
         matrix_combinations,
         matrix_job_name,
         strategy_context,
     )
-    from app.services.workflow_expressions import render_expressions
 
     combos = matrix_combinations(
         evaluate_expression_value(pending["dynamic_matrix"], context)

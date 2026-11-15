@@ -6,9 +6,9 @@ import os
 from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.git.bare_repo import list_tree, get_file_content, get_log
-from app.models.search_index import FileContent, CommitMetadata
+from app.git.bare_repo import get_file_content, get_log, list_tree
 from app.models.repository import Repository
+from app.models.search_index import CommitMetadata, FileContent
 
 logger = logging.getLogger("github_emulator.index")
 

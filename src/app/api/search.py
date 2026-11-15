@@ -1,18 +1,18 @@
 """Search endpoints -- repos, issues, users, code, commits."""
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select, or_
+from fastapi import APIRouter, Query
+from sqlalchemy import or_, select
 
 from app.api.deps import CurrentUser, DbSession
-from app.config import settings
-from app.models.repository import Repository
-from app.models.issue import Issue
-from app.models.user import User
-from app.models.search_index import FileContent, CommitMetadata
-from app.api.repos import _repo_json
 from app.api.issues import _issue_json
-from app.schemas.user import UserResponse, _make_node_id
+from app.api.repos import _repo_json
+from app.config import settings
+from app.models.issue import Issue
+from app.models.repository import Repository
+from app.models.search_index import CommitMetadata, FileContent
+from app.models.user import User
 from app.schemas.browse import GenericSearchResponse, RepositorySearchResponse
+from app.schemas.user import UserResponse
 
 router = APIRouter(tags=["search"])
 
@@ -243,8 +243,6 @@ async def search_code(
         )
         repo = repo_result.scalar_one_or_none()
         repo_full = repo.full_name if repo else ""
-        owner_login = repo_full.split("/")[0] if "/" in repo_full else ""
-        repo_name = repo_full.split("/")[1] if "/" in repo_full else ""
 
         # Extract text matches (first matching line)
         text_matches = []
