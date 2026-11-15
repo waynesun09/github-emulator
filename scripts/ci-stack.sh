@@ -67,6 +67,12 @@
 #                   never needs to reach, e.g. 185.199.108.200, unused in
 #                   GitHub's raw-content block. It must not be loopback or
 #                   the real host's address, which the fallback above uses.
+#   CI_STACK_POSTGRES  1 to keep the emulator's data in this machine's
+#                   PostgreSQL (the copy preinstalled on GitHub's ubuntu-24.04
+#                   runner, started here) instead of SQLite. Linux only
+#                   (sudo). Throwaway: fsync and synchronous_commit off; the
+#                   password is generated per start and stays in $DIR.
+#                   CI_STACK_PYTHON needs asyncpg (the `postgres` extra).
 #   GITHUB_EMULATOR_*  any emulator setting in this environment reaches the
 #                   emulator, e.g. GITHUB_EMULATOR_RATE_LIMIT=1000000 for a
 #                   suite whose client paces itself on X-RateLimit-Remaining.
@@ -254,10 +260,32 @@ read_runner_env() {
   done <<<"${CI_STACK_RUNNER_ENV:-}"
 }
 
+# Start this machine's PostgreSQL for the emulator; prints the database URL.
+postgres_url() {
+  if [ ! -s "$DIR/postgres-url" ]; then
+    local pw
+    pw="$(openssl rand -hex 16)"
+    command -v psql >/dev/null || { echo "CI_STACK_POSTGRES: no psql on this machine" >&2; exit 2; }
+    sudo systemctl start postgresql.service
+    sudo -u postgres psql -q -c "ALTER USER postgres PASSWORD '$pw'" \
+      -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off" \
+      -c "ALTER SYSTEM SET full_page_writes = off" -c "ALTER SYSTEM SET max_connections = 300" >&2
+    sudo systemctl restart postgresql.service
+    sudo -u postgres psql -q -c "DROP DATABASE IF EXISTS ghemu" -c "CREATE DATABASE ghemu" >&2
+    (umask 077; echo "postgresql+asyncpg://postgres:$pw@127.0.0.1:5432/ghemu" >"$DIR/postgres-url")
+  fi
+  cat "$DIR/postgres-url"
+}
+
 start() {
   read_runner_env
   mkdir -p "$DIR/data" "$DIR/runner"
   localhost_dns
+  local db_url="sqlite+aiosqlite:///$DIR/data/github_emulator.db"
+  if [ "${CI_STACK_POSTGRES:-0}" = 1 ]; then
+    db_url="$(postgres_url)"
+    echo "emulator database: PostgreSQL (127.0.0.1:5432/ghemu)"
+  fi
   local tls_args=() curl_ca=()
   if [ "$TLS" = 1 ]; then
     make_tls
@@ -269,7 +297,7 @@ start() {
   GITHUB_EMULATOR_SECRET_KEY="${GITHUB_EMULATOR_SECRET_KEY:-$(openssl rand -hex 32)}" \
   GITHUB_EMULATOR_APP_JWT_PERMISSIVE="${GITHUB_EMULATOR_APP_JWT_PERMISSIVE:-false}" \
   GITHUB_EMULATOR_DATA_DIR="$DIR/data" \
-  GITHUB_EMULATOR_DATABASE_URL="sqlite+aiosqlite:///$DIR/data/github_emulator.db" \
+  GITHUB_EMULATOR_DATABASE_URL="$db_url" \
   GITHUB_EMULATOR_BASE_URL="$BASE" \
   GITHUB_EMULATOR_HOSTNAME="$HOST" \
   GITHUB_EMULATOR_RAW_CONTENT_UPSTREAM_ADDR="$(cat "$DIR/raw-upstream-addr" 2>/dev/null || true)" \

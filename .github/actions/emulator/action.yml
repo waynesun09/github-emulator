@@ -31,6 +31,11 @@ inputs:
       Resolve a *.localhost host to this VM's address instead of loopback, for
       clients that refuse loopback (an OpenShell sandbox supervisor). Linux only.
     default: "false"
+  database:
+    description: >
+      sqlite (default) or postgres: keep the emulator's data in the runner's
+      preinstalled PostgreSQL (ubuntu-24.04), started for the job.
+    default: sqlite
   raw-host:
     description: >
       Also answer raw.githubusercontent.com on this VM, for a client that
@@ -129,6 +134,7 @@ runs:
         CI_STACK_SYSTEM_TRUST: ${{ inputs.system-trust == 'true' && '1' || '0' }}
         CI_STACK_LOCALHOST_DNS: ${{ inputs.localhost-dns == 'true' && '1' || '0' }}
         CI_STACK_RAW_HOST: ${{ inputs.raw-host == 'true' && '1' || '0' }}
+        CI_STACK_POSTGRES: ${{ inputs.database == 'postgres' && '1' || '0' }}
         CI_STACK_RAW_ADDR: ${{ inputs.raw-addr }}
         GITHUB_EMULATOR_ACTIONS_UPSTREAM_TOKEN: ${{ inputs.upstream-token }}
         CI_STACK_RUNNERS: ${{ inputs.runners }}
