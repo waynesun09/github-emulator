@@ -185,14 +185,15 @@ async def get_collaborator_permission(
     owner of a user-owned repository, a collaborator, or a member of the
     owning organization through an organization role (or as an owner).
     A GitHub App's bot is not a collaborator, and GitHub does not report its
-    installation's access here (Fullsend's CLI says so and works around it):
-    a bot without a collaborator row is 404. Its git push and contents
-    writes still follow its installation
+    installation's access here: a bot without a collaborator row is 200
+    ``none`` with an empty role_name, on public repositories too, even when
+    its App is installed on the repository with write access. Its git push
+    and contents writes still follow its installation
     (``repository_access.installation_role``).
 
-    A person with none of those is not 404 on GitHub: they read a public
-    repository like anyone else, and have ``none`` on a private one. Only a
-    login that names no user is 404.
+    A person with none of those is not 404 on GitHub either: they read a
+    public repository like anyone else, and have ``none`` on a private one.
+    Only a login that names no user is 404.
     """
     from app.services.repository_access import repository_permission
 
@@ -204,7 +205,7 @@ async def get_collaborator_permission(
     permission = await repository_permission(db, repository, target)
     if permission is None:
         if getattr(target, "type", "User") == "Bot":
-            raise HTTPException(status_code=404, detail="Not Found")
+            return _no_permission_json(target)
         if repository.private or (repository.visibility or "public") != "public":
             return _no_permission_json(target)
         permission = "pull"
