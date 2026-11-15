@@ -31,6 +31,11 @@ inputs:
       Resolve a *.localhost host to this VM's address instead of loopback, for
       clients that refuse loopback (an OpenShell sandbox supervisor). Linux only.
     default: "false"
+  raw-host:
+    description: >
+      Also answer raw.githubusercontent.com on this VM, for a client that
+      hard-codes github.com's raw host. Needs localhost-dns, tls and port 443.
+    default: "false"
   runners:
     description: Runner processes, i.e. emulator jobs that run at once.
     default: "1"
@@ -109,6 +114,7 @@ runs:
         CI_STACK_TLS: ${{ inputs.tls == 'true' && '1' || '0' }}
         CI_STACK_SYSTEM_TRUST: ${{ inputs.system-trust == 'true' && '1' || '0' }}
         CI_STACK_LOCALHOST_DNS: ${{ inputs.localhost-dns == 'true' && '1' || '0' }}
+        CI_STACK_RAW_HOST: ${{ inputs.raw-host == 'true' && '1' || '0' }}
         CI_STACK_RUNNERS: ${{ inputs.runners }}
         CI_STACK_RUNNER_KIND: ${{ inputs.runner-kind }}
         CI_STACK_UPSTREAM_RUNNER_VERSION: ${{ inputs.runner-version }}

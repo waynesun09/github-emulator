@@ -50,6 +50,14 @@
 #                   service that needs its own port 443. Each name must be a
 #                   subdomain of CI_STACK_HOST and each ip a non-loopback
 #                   IPv4 address; one not yet on this machine is added to lo.
+#   CI_STACK_RAW_HOST  1 to answer raw.githubusercontent.com on this
+#                   machine too, for a client that hard-codes github.com's
+#                   raw host (Fullsend's URL-sourced harness). Needs
+#                   CI_STACK_LOCALHOST_DNS=1, CI_STACK_TLS=1 and
+#                   CI_STACK_PORT=443: dnsmasq answers the name with this
+#                   machine's address and the certificate names it. Every
+#                   raw.githubusercontent.com fetch on this machine then
+#                   reaches the emulator, which serves only its own repos.
 #   CI_STACK_RUNNER_ENV  extra environment for every runner and the jobs it
 #                   runs: NAME=VALUE lines, one per line (a value may hold
 #                   commas and spaces), e.g. a gateway shared by the runners
@@ -75,6 +83,12 @@ KIND="${CI_STACK_RUNNER_KIND:-python}"
 UPSTREAM_VERSION="${CI_STACK_UPSTREAM_RUNNER_VERSION:-2.338.2}"
 UPSTREAM_SHA256="${CI_STACK_UPSTREAM_RUNNER_SHA256:-baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40}"
 TLS="${CI_STACK_TLS:-0}"
+RAW_HOST="${CI_STACK_RAW_HOST:-0}"
+RAW_NAME=raw.githubusercontent.com
+if [ "$RAW_HOST" = 1 ] && { [ "$LOCALHOST_DNS" != 1 ] || [ "$TLS" != 1 ] || [ "$PORT" != 443 ]; }; then
+  echo "CI_STACK_RAW_HOST=1 needs CI_STACK_LOCALHOST_DNS=1, CI_STACK_TLS=1 and CI_STACK_PORT=443" >&2
+  exit 2
+fi
 SCHEME=http
 [ "$TLS" = 1 ] && SCHEME=https
 # No default port in the URL, as GitHub writes its own: the OIDC issuer is
@@ -97,6 +111,7 @@ make_tls() {
   mkdir -p "$t"
   if [[ "$HOST" =~ ^[0-9.]+$ ]]; then san="IP:$HOST"; else san="DNS:$HOST"; fi
   san="$san,DNS:localhost,IP:127.0.0.1"
+  if [ "$RAW_HOST" = 1 ]; then san="$san,DNS:$RAW_NAME"; fi
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=ci-stack CA" \
     -keyout "$t/ca-key.pem" -out "$CA" 2>/dev/null
   openssl req -newkey rsa:2048 -nodes -subj "/CN=$HOST" \
@@ -169,6 +184,10 @@ localhost_dns() {
     extra+=(--address="/$name/$addr")
     echo "$name -> $addr"
   done
+  if [ "$RAW_HOST" = 1 ]; then
+    extra+=(--address="/$RAW_NAME/$ip")
+    echo "$RAW_NAME -> $ip"
+  fi
   sudo dnsmasq --listen-address=127.0.0.2 --bind-interfaces --port=53 --no-resolv --no-hosts \
     --server="$upstream" --address="/$HOST/$ip" ${extra[@]+"${extra[@]}"} --pid-file="$DIR/dnsmasq.pid"
   # /etc/resolv.conf is a symlink into systemd-resolved's runtime directory on
