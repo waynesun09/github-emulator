@@ -96,7 +96,7 @@ runs:
   using: composite
   steps:
     # No uv cache: its key is a glob over the consumer's workspace, which does
-    # not hold this action's requirements.txt, and a cold install is ~seconds.
+    # not hold this action's uv.lock, and a cold install is ~seconds.
     - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
       with:
         enable-cache: false
@@ -107,8 +107,11 @@ runs:
         ROOT: ${{ github.action_path }}/../../..
         VENV: ${{ inputs.state-dir }}/venv
       run: |
+        # The versions in uv.lock, each checked against its hash: not the
+        # newest release of every package on the day of the run.
         uv venv -q --python 3.12 "$VENV"
-        VIRTUAL_ENV="$VENV" uv pip install -q -r "$ROOT/requirements.txt"
+        uv export -q --project "$ROOT" --frozen --no-dev --no-emit-project --format requirements-txt -o "$VENV.requirements.txt"
+        VIRTUAL_ENV="$VENV" uv pip install -q --require-hashes -r "$VENV.requirements.txt"
 
     - name: Allow ports below 1024
       if: fromJSON(inputs.port) < 1024

@@ -10,7 +10,8 @@
 # Settings (all optional):
 #   CI_STACK_DIR    state directory: SQLite file, git repos, logs, pids
 #   CI_STACK_PORT   API port (default 8000)
-#   CI_STACK_PYTHON python with requirements.txt installed (default python3)
+#   CI_STACK_PYTHON python with the locked dependencies installed (default
+#                   python3), e.g. a `uv sync --frozen` .venv
 #   CI_STACK_RUNNER_LABELS  labels the runner serves
 #   CI_STACK_HOST   host name the emulator puts in its URLs (default
 #                   127.0.0.1). A sandbox that cannot reach loopback needs a

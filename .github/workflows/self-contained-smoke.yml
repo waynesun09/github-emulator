@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
       - name: Install
-        run: uv venv -q --python 3.12 && uv pip install -q -e ".[dev]"
+        run: uv sync -q --frozen --python 3.12 --all-extras
       - name: Pick this shard's files
         id: pick
         env:
@@ -76,12 +76,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+        with:
+          enable-cache: false
       - name: Install the emulator's Python dependencies
         id: deps
         run: |
           start=$(date +%s.%N)
           python3 -m venv /tmp/emu-venv
-          /tmp/emu-venv/bin/pip install -q -r requirements.txt
+          uv export -q --frozen --no-dev --no-emit-project --format requirements-txt -o /tmp/emu-requirements.txt
+          /tmp/emu-venv/bin/pip install -q --require-hashes -r /tmp/emu-requirements.txt
           echo "seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$GITHUB_OUTPUT"
 
       - name: Start the stack
@@ -250,7 +254,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: python3 -m venv /tmp/emu-venv && /tmp/emu-venv/bin/pip install -q -r requirements.txt
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+        with:
+          enable-cache: false
+      - name: Install the emulator's Python dependencies
+        run: |
+          python3 -m venv /tmp/emu-venv
+          uv export -q --frozen --no-dev --no-emit-project --format requirements-txt -o /tmp/emu-requirements.txt
+          /tmp/emu-venv/bin/pip install -q --require-hashes -r /tmp/emu-requirements.txt
       - name: Allow ports below 1024
         run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
       - name: Point the probe at the stack
