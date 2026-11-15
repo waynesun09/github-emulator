@@ -119,3 +119,24 @@ async def test_a_private_repository_is_not_readable_by_an_outsider(
         f"/{full_name}/raw/main/secret.txt", headers=auth_headers(test_token)
     )
     assert owner.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_raw_githubusercontent_host_and_path_shape(client, test_token, test_repo_with_init):
+    """A machine that resolves raw.githubusercontent.com here gets the file.
+
+    Fullsend hard-codes that host for a URL-sourced harness.
+    """
+    _owner, _name, repo = test_repo_with_init
+    await _commit(client, test_token, repo["full_name"], "harness/triage.yaml", "agent: triage\n")
+    raw = {"Host": "raw.githubusercontent.com"}
+
+    for ref in ("main", "refs/heads/main"):
+        response = await client.get(f"/{repo['full_name']}/{ref}/harness/triage.yaml", headers=raw)
+        assert response.status_code == 200, (ref, response.text)
+        assert response.text == "agent: triage\n"
+
+    missing = await client.get(f"/{repo['full_name']}/main/harness/absent.yaml", headers=raw)
+    assert missing.status_code == 404
+    # The emulator's own host keeps its own paths.
+    assert (await client.get(f"/{repo['full_name']}/main/harness/triage.yaml")).status_code != 200
