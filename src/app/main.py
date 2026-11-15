@@ -159,6 +159,9 @@ def create_app() -> FastAPI:
     if settings.MEMORY_WATCH:
         from app.middleware.memory_watch import MemoryWatchMiddleware
         app.add_middleware(MemoryWatchMiddleware)
+    # Outermost: names the request in the writer-lock logging.
+    from app.database_diag import RequestContextMiddleware
+    app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
 
     # -- REST API routers -----------------------------------------------------

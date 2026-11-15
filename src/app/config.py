@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     # SQLite database URL
     DATABASE_URL: str = ""
     SQLITE_BUSY_TIMEOUT_MS: int = 5000
+    # Log a write transaction that holds SQLite's writer lock this long
+    # (app/database_diag.py).
+    SQLITE_SLOW_WRITE_LOG_MS: int = 1000
     SQLITE_WRITE_RETRY_ATTEMPTS: int = 2
     SQLITE_WRITE_RETRY_DELAY_MS: int = 100
 

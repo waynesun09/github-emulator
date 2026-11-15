@@ -31,6 +31,10 @@ def _configure_sqlite_connection(dbapi_connection, connection_record):
     finally:
         cursor.close()
 
+from app.database_diag import instrument_sqlite_engine  # noqa: E402
+
+instrument_sqlite_engine(engine)
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
