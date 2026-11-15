@@ -12,15 +12,6 @@ updates:
       python-minor-patch:
         update-types: [minor, patch]
 
-  # The container image installs from requirements.txt.
-  - package-ecosystem: pip
-    directory: /
-    schedule: {interval: weekly}
-    cooldown: {default-days: 14}
-    groups:
-      image-minor-patch:
-        update-types: [minor, patch]
-
   - package-ecosystem: npm
     directory: /src/frontend
     schedule: {interval: weekly}

@@ -53,7 +53,7 @@ frontend prettier........................................................Passed
 Continuous integration in [.github/workflows/hygiene.yml](.github/workflows/hygiene.yml) runs on every push and pull request:
 - pre-commit on the change: a pull request is checked against its base, a push against the commit it replaced.
 - gitleaks over the full git history.
-- pip-audit on the locked Python dependencies (`uv.lock`) and on `requirements.txt` (what the container image installs).
+- pip-audit on the locked Python dependencies (`uv.lock`).
 - `npm audit --audit-level=high` for the frontend.
 - frontend lint, typecheck, format check and tests.
 
@@ -68,7 +68,7 @@ Rules and deliberate exceptions are in [pyproject.toml](pyproject.toml) with the
 
 ### Dependencies and Security Advisories
 - `uv.lock` is committed. After changing dependencies in [pyproject.toml](pyproject.toml), run `uv lock` and commit `uv.lock`. CI runs `uv lock --locked`, which fails if the lock is out of date.
-- `requirements.txt` is what the container image installs; keep it listing the same packages as [pyproject.toml](pyproject.toml) (it also has `supervisor`, which only the image needs).
+- Everything installs from `uv.lock` with hashes: `uv sync --frozen` locally, and the container image, the composite action and CI export the lock (`uv export --frozen --no-dev`) and install with `--require-hashes`. There is no `requirements.txt` to keep in step.
 - Dependabot opens weekly update pull requests, holding new releases back 14 days ([.github/dependabot.yml](.github/dependabot.yml)).
 - An advisory with no fix that cannot be reached here is accepted by adding `--ignore-vuln <ID>` in [.github/workflows/hygiene.yml](.github/workflows/hygiene.yml) with a comment saying why it is unreachable. Two are accepted today: PYSEC-2026-4298 (`python-jose`; every decode pins its algorithm) and PYSEC-2026-1325 (`ecdsa`; nothing signs with ECDSA).
 

@@ -57,7 +57,7 @@ PASS: dispatch input crossed a job output into the consume job's log
 
 ## Run it locally
 
-Run the Python runner on any free port with [scripts/ci-stack.sh](../../scripts/ci-stack.sh) (`CI_STACK_PYTHON` is a virtualenv with `requirements.txt` installed):
+Run the Python runner on any free port with [scripts/ci-stack.sh](../../scripts/ci-stack.sh) (`CI_STACK_PYTHON` is a virtualenv with the locked dependencies installed, e.g. `uv sync --frozen`'s `.venv`):
 
 ```
 $ CI_STACK_PORT=18304 CI_STACK_PYTHON=.venv/bin/python scripts/ci-stack.sh start
