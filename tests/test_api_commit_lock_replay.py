@@ -10,8 +10,8 @@ write is replayed, and if the lock persists the ref goes back first.
 import base64
 
 import pytest
-from sqlalchemy.exc import OperationalError
 from sqlalchemy import event
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
