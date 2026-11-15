@@ -4,14 +4,15 @@ import json
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from sqlalchemy import func as sa_func, select, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func as sa_func
+from sqlalchemy import select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.middleware.error_handler import ValidationError
-from app.models.label import Label
 from app.models.issue import Issue, IssueLabel
+from app.models.label import Label
 from app.schemas.label import LabelCreate, LabelResponse, LabelUpdate
 from app.services.issue_event_service import record_label_event
 
@@ -138,7 +139,7 @@ async def list_labels(
         .limit(per_page)
     )
     labels = (await db.execute(query)).scalars().all()
-    return [LabelResponse.from_db(l, BASE, owner, repo) for l in labels]
+    return [LabelResponse.from_db(label, BASE, owner, repo) for label in labels]
 
 
 @router.post(
@@ -272,7 +273,7 @@ async def list_issue_labels(
     if issue is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    return [LabelResponse.from_db(l, BASE, owner, repo) for l in issue.labels]
+    return [LabelResponse.from_db(label, BASE, owner, repo) for label in issue.labels]
 
 
 @router.post(
@@ -332,7 +333,7 @@ async def add_issue_labels(
         from app.services.auto_merge_service import process_auto_merge
         await process_auto_merge(db, issue.pull_request, user)
         await db.refresh(issue)
-    return [LabelResponse.from_db(l, BASE, owner, repo) for l in issue.labels]
+    return [LabelResponse.from_db(label, BASE, owner, repo) for label in issue.labels]
 
 
 @router.put(
@@ -398,7 +399,7 @@ async def set_issue_labels(
         from app.services.auto_merge_service import process_auto_merge
         await process_auto_merge(db, issue.pull_request, user)
         await db.refresh(issue)
-    return [LabelResponse.from_db(l, BASE, owner, repo) for l in issue.labels]
+    return [LabelResponse.from_db(label, BASE, owner, repo) for label in issue.labels]
 
 
 @router.delete(
@@ -451,4 +452,4 @@ async def remove_issue_label(
     await db.commit()
     await db.refresh(issue)
     await _dispatch_label_event(db, repository, user, issue, "unlabeled", label)
-    return [LabelResponse.from_db(l, BASE, owner, repo) for l in issue.labels]
+    return [LabelResponse.from_db(label, BASE, owner, repo) for label in issue.labels]
