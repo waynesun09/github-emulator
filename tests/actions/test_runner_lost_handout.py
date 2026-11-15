@@ -81,6 +81,16 @@ async def _runner(client, test_token, name):
     return headers, session["sessionId"]
 
 
+async def _retrying(call):
+    """As a client does with the emulator's 503 for SQLite writer contention."""
+    for _ in range(20):
+        resp = await call()
+        if resp.status_code != 503:
+            return resp
+        await asyncio.sleep(0.05)
+    return resp
+
+
 def _poll(client, headers, session_id, last, status="Online"):
     return client.get(
         f"/_apis/distributedtask/pools/1/sessions/{session_id}/messages",
@@ -156,13 +166,14 @@ async def test_every_job_runs_once_when_runners_abandon_polls(
             delivered[job_id] += 1
             last = job_id
             # As the runner does once it has dispatched the job.
-            ack = await client.delete(f"/_apis/distributedtask/pools/1/messages/{job_id}", headers=headers)
+            ack = await _retrying(lambda: client.delete(
+                f"/_apis/distributedtask/pools/1/messages/{job_id}", headers=headers))
             assert ack.status_code == 200
             await asyncio.sleep(rng.uniform(0, 0.03))
-            done = await client.post(
+            done = await _retrying(lambda: client.post(
                 f"/_apis/distributedtask/jobs/{job_id}/complete",
                 json={"result": "Succeeded"}, headers=headers,
-            )
+            ))
             assert done.status_code == 200
 
     await asyncio.wait_for(asyncio.gather(*(work(h, s) for h, s in runners)), 60)

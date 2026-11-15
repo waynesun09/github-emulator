@@ -1204,6 +1204,10 @@ async def dt_get_messages(
             # Every pass, not only the first: a lost hand-out is decided once
             # its acknowledgement window has passed.
             await _settle_idle_runner(runner, status, last_message_id, db)
+            # End the read transaction: under WAL a write in a transaction
+            # that began by reading fails at once when another writer
+            # committed meanwhile, without waiting on busy_timeout.
+            await db.commit()
             cancellation = await _pending_cancellation(runner, db)
             if cancellation is not None:
                 logger.info("Runner %s sent cancellation of job %s", runner.name, cancellation["messageId"])
