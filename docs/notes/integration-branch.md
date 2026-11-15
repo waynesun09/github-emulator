@@ -63,6 +63,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 48 | fix-graphql-pr-comment-and-issue-input | 81007da | GraphQL `addComment` and `addReaction` accept a PullRequest node id (resolved to its backing issue), so `gh pr close --comment` works; `CreateIssueInput` accepts and ignores `projectIds`, `projectV2Ids`, `issueTemplate`, `issueTypeId` and `parentIssueId`, which `gh issue create` sends (bt-f3, agents base run) |
 | 49 | fix-repo-create-name-race | 2443b5c | Two concurrent creates of the same repository name: the loser answered 500 (IntegrityError on the unique index); now it rolls back and answers 422, as GitHub does (bt-f4, 1-3 per reliability run) |
 | 50 | fix-stale-row-404 | fff87e5 | An update of a row another request deleted (a runner reporting a job after its repository was deleted) answered 500 with StaleDataError; now 404 (bt-f4, agents run 43726152193) |
+| 51 | perf-dispatch-writer-lock (on ci-self-contained) | 51d6308 | Run creation, job promotion and reindexing keep their reads out of SQLite's write lock: reads before the first write, column-only lookups, growing collections no longer eager, one supersede query per promotion, executemany for the search index (window: 64 -> 14, 68 -> 13, ~1000 -> 4 statements; bt-f4, agents run 43726152193) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
