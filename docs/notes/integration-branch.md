@@ -60,6 +60,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 45 | fix-sqlite-busy-wait | 943f107 | `SQLITE_BUSY_TIMEOUT_MS` defaults to 30000: writers queue for SQLite's lock instead of failing with 503 after 5 s (bt-f5: 97 failures, all after 5019-5368 ms) |
 | 46 | fix-rest-json-body-and-token-revoke | 7f2cab1 (+ apps.py import sort) | `/api/v3` writes read a JSON object or array body whatever the Content-Type (missing, form-encoded, text/plain), as GitHub does; `DELETE /installation/token` revokes the calling token (204) (bt-f3, picked by bt-f4) |
 | 47 | ci-self-contained | this row's commit | `CI_STACK_RAW_ADDR` (action input `raw-addr`) answers raw.githubusercontent.com with a given public IPv4 address on lo instead of the VM's private one, for a client whose fetch guard refuses private addresses (Fullsend's URL-sourced harness); the fallback for unknown repositories keeps the real address |
+| 48 | fix-graphql-pr-comment-and-issue-input | 81007da | GraphQL `addComment` and `addReaction` accept a PullRequest node id (resolved to its backing issue), so `gh pr close --comment` works; `CreateIssueInput` accepts and ignores `projectIds`, `projectV2Ids`, `issueTemplate`, `issueTypeId` and `parentIssueId`, which `gh issue create` sends (bt-f3, agents base run) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
