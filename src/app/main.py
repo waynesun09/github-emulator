@@ -15,6 +15,13 @@ from app.config import settings
 from app.database import init_db, async_session, get_db
 
 logger = logging.getLogger("github_emulator")
+# Nothing else gives the app's own loggers a handler, so their INFO lines
+# (runner job hand-outs, for one) never reached the server log.
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(os.environ.get("GITHUB_EMULATOR_LOG_LEVEL", "INFO").upper())
 
 
 @asynccontextmanager
