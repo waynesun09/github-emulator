@@ -43,8 +43,36 @@ def _configure_sqlite_connection(dbapi_connection, connection_record):
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute(f"PRAGMA busy_timeout={settings.SQLITE_BUSY_TIMEOUT_MS}")
+        if settings.SQLITE_SYNCHRONOUS:
+            mode = settings.SQLITE_SYNCHRONOUS.upper()
+            if mode not in ("OFF", "NORMAL", "FULL", "EXTRA"):
+                raise ValueError(f"SQLITE_SYNCHRONOUS={mode} is not OFF, NORMAL, FULL or EXTRA")
+            cursor.execute(f"PRAGMA synchronous={mode}")
     finally:
         cursor.close()
+    if settings.SQLITE_BEGIN_IMMEDIATE:
+        # The driver would begin its own (deferred) transaction before the
+        # first write; SQLAlchemy's begin event below starts it instead.
+        dbapi_connection.isolation_level = None
+
+
+_WRITE_METHODS = ("POST ", "PUT ", "PATCH ", "DELETE ")
+
+
+@event.listens_for(engine.sync_engine, "begin")
+def _begin_sqlite_transaction(conn):
+    """With SQLITE_BEGIN_IMMEDIATE, start each transaction explicitly.
+
+    A write request takes the write lock up front (BEGIN IMMEDIATE), so it
+    waits for it once, before any work, and never has to upgrade a read
+    snapshot; any other request begins a deferred transaction.
+    """
+    if not settings.SQLITE_BEGIN_IMMEDIATE or not settings.DATABASE_URL.startswith("sqlite"):
+        return
+    from app.database_diag import current_request
+
+    request = current_request.get() or ""
+    conn.exec_driver_sql("BEGIN IMMEDIATE" if request.startswith(_WRITE_METHODS) else "BEGIN")
 
 from app.database_diag import instrument_sqlite_engine  # noqa: E402
 

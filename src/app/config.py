@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     # Log a write transaction that holds SQLite's writer lock this long
     # (app/database_diag.py).
     SQLITE_SLOW_WRITE_LOG_MS: int = 1000
+    # PRAGMA synchronous for every connection. Empty leaves SQLite's default
+    # (FULL: a sync on every commit). NORMAL syncs only at WAL checkpoints;
+    # a power loss can drop the last commits, never corrupt the database.
+    SQLITE_SYNCHRONOUS: str = ""
+    # Take SQLite's write lock when a write request (POST, PUT, PATCH,
+    # DELETE) starts its first transaction (BEGIN IMMEDIATE), instead of at
+    # its first write. Reads then share that request's snapshot.
+    SQLITE_BEGIN_IMMEDIATE: bool = False
     # Log the event loop running a timer this late (app/database_diag.py).
     EVENT_LOOP_LAG_LOG_MS: int = 500
     # Requests per token (or client address) per hour that the rate-limit
