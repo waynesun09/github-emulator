@@ -578,10 +578,13 @@ async def _poll_for_jobs(
                     "repository": repository.full_name if repository else "",
                 }
 
+        # End the read transaction before waiting. Under PostgreSQL's
+        # REPEATABLE READ or SERIALIZABLE a transaction keeps the snapshot of
+        # its first read, so the next pass would never see a job queued
+        # meanwhile; SQLite's driver happened not to hold reads in a
+        # transaction. Committing also expires the loaded objects.
+        await db.commit()
         await asyncio.sleep(2)
-        # AsyncSession.expire_all is synchronous; awaiting it raises a
-        # TypeError whenever the runner has no queued job during long-polling.
-        db.expire_all()
 
     return Response(status_code=204)
 
