@@ -34,7 +34,7 @@ from app.api.actions_runner_protocol import (
     _variable,
     _workflow_guid,
 )
-from app.api.actions_runners import normalise_runner_os
+from app.api.actions_runners import _delete_runner_and_detach_history, normalise_runner_os
 from app.api.deps import DbSession
 from app.config import settings
 from app.models.actions import (
@@ -528,8 +528,8 @@ async def dt_delete_pool_agent(
     runner = result.scalar_one_or_none()
     if runner is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    await db.delete(runner)
-    await db.commit()
+    # Detach the jobs that ran on it: PostgreSQL enforces the foreign key.
+    await _delete_runner_and_detach_history(db, runner)
     return {"status": "removed"}
 
 
