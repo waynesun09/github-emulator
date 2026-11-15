@@ -69,6 +69,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 54 | fix-label-create-race | 120f492 | Two requests adding the same new label to issues at once: the second answered 500 (unique constraint); now INSERT ... ON CONFLICT DO NOTHING and read back |
 | 55 | fix-graphql-issue-sub-issues | fedd3d8 | GraphQL `Issue.subIssues` is an empty connection and `Issue.parent` is null: the agents code scripts' `subIssues(first: 1) { totalCount }` answered "Cannot query field" 1-2 times per run (bt-f4) |
 | 56 | fix-runner-first-poll-requeue | ce89cbe | A job handed to a runner's abandoned first long-poll (no lastMessageId) is requeued, not failed after the grace period; a runner restarted mid-job still fails it (bt-f2/bt-f4, run 43740835949 shard b) |
+| 57 | fix-runner-delete-and-poll-snapshot | 7a6a4a7 | Runner deletes through the runner protocol and pipelines routes detach the jobs it ran (they pointed at a deleted runner); the pool long-poll commits before each wait (found by the PostgreSQL spike) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
