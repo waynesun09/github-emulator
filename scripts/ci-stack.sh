@@ -57,7 +57,9 @@
 #                   CI_STACK_PORT=443: dnsmasq answers the name with this
 #                   machine's address and the certificate names it. Every
 #                   raw.githubusercontent.com fetch on this machine then
-#                   reaches the emulator, which serves only its own repos.
+#                   reaches the emulator. It serves its own repositories and
+#                   fetches any other from the real host, at the address
+#                   looked up before the switch (raw-upstream-addr).
 #   CI_STACK_RUNNER_ENV  extra environment for every runner and the jobs it
 #                   runs: NAME=VALUE lines, one per line (a value may hold
 #                   commas and spaces), e.g. a gateway shared by the runners
@@ -185,6 +187,16 @@ localhost_dns() {
     echo "$name -> $addr"
   done
   if [ "$RAW_HOST" = 1 ]; then
+    # The real address, looked up while the name still resolves to it, so
+    # the emulator can fetch repositories it does not have. Kept across
+    # restarts: by then the name resolves here.
+    if [ ! -s "$DIR/raw-upstream-addr" ]; then
+      getent ahostsv4 "$RAW_NAME" | awk 'NR == 1 { print $1 }' >"$DIR/raw-upstream-addr" || true
+    fi
+    if [ ! -s "$DIR/raw-upstream-addr" ] || [ "$(cat "$DIR/raw-upstream-addr")" = "$ip" ]; then
+      echo "CI_STACK_RAW_HOST: could not look up the real $RAW_NAME; other repositories will 404" >&2
+      rm -f "$DIR/raw-upstream-addr"
+    fi
     extra+=(--address="/$RAW_NAME/$ip")
     echo "$RAW_NAME -> $ip"
   fi
@@ -239,6 +251,7 @@ start() {
   GITHUB_EMULATOR_DATABASE_URL="sqlite+aiosqlite:///$DIR/data/github_emulator.db" \
   GITHUB_EMULATOR_BASE_URL="$BASE" \
   GITHUB_EMULATOR_HOSTNAME="$HOST" \
+  GITHUB_EMULATOR_RAW_CONTENT_UPSTREAM_ADDR="$(cat "$DIR/raw-upstream-addr" 2>/dev/null || true)" \
   GITHUB_EMULATOR_SSH_ENABLED=false \
   PYTHONPATH="$ROOT/src" \
     nohup "$PY" -m uvicorn app.main:app --host "$BIND" --port "$PORT" \
