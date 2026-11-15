@@ -54,6 +54,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 39 | fix-github-context-fields | 66bac8a | `github.actor`, `actor_id`, `triggering_actor`, `api_url`, `graphql_url`, `repository_id`, `repository_owner_id`, `run_attempt` and `workflow_ref` filled where the emulator renders expressions and in the job message (so `GITHUB_ACTOR` and the rest are set); runs gain `run_started_at` and `display_title`, jobs `created_at`, `head_sha` and `head_branch` (bt-f3 A3, A5) |
 | 40 | fix-write-after-git | 65f1bb6 | Contents `PUT`/`DELETE` and `createCommitOnBranch` replay their database write through SQLite's writer lock, and if it persists move the branch back before the 503, so a retry succeeds (bt-f5: 12 `database is locked`) |
 | 41 | fix-raw-githubusercontent | 55b7e92, 2c51565 | Requests to `raw.githubusercontent.com` use the raw route, and repositories the emulator lacks come from the real host; `CI_STACK_RAW_HOST=1` (action input `raw-host`) resolves that name to the VM and puts it in the certificate (bt-f5: URL-sourced harness fetches) |
+| 42 | fix-rate-limit-configurable | 2404668 | `RATE_LIMIT` (`GITHUB_EMULATOR_RATE_LIMIT`, default 5000) sets the rate-limit headers and `GET /rate_limit`, which now reports the caller's usage and is not counted (bt-f5: Fullsend's pool gate idled 6 workers for 18 min at 0/5000) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 

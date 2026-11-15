@@ -60,6 +60,9 @@
 #                   reaches the emulator. It serves its own repositories and
 #                   fetches any other from the real host, at the address
 #                   looked up before the switch (raw-upstream-addr).
+#   GITHUB_EMULATOR_*  any emulator setting in this environment reaches the
+#                   emulator, e.g. GITHUB_EMULATOR_RATE_LIMIT=1000000 for a
+#                   suite whose client paces itself on X-RateLimit-Remaining.
 #   CI_STACK_RUNNER_ENV  extra environment for every runner and the jobs it
 #                   runs: NAME=VALUE lines, one per line (a value may hold
 #                   commas and spaces), e.g. a gateway shared by the runners
