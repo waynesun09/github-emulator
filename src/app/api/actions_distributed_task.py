@@ -980,6 +980,10 @@ _poll_generation: dict[int, int] = {}
 _acknowledged: set[int] = set()
 _runner_locks: dict[tuple[int, int], asyncio.Lock] = {}
 
+# How long a handed-out job may stay unacknowledged before a poll that does
+# not name it counts as proof the runner never received it.
+_ACK_WINDOW = timedelta(seconds=5)
+
 # Long-poll pacing; tests shorten them.
 _POLL_SECONDS = 30.0
 _POLL_INTERVAL_SECONDS = 2.0
@@ -1078,7 +1082,17 @@ async def _settle_idle_runner(runner: Runner, status: str, last_message_id: str,
     )).scalars().all()
     now = datetime.now(timezone.utc)
     for job in jobs:
+        started = job.started_at
+        if started is not None and started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        age = now - started if started is not None else _IDLE_GRACE
         if last_message_id and last_message_id != str(job.id) and job.id not in _acknowledged:
+            if age < _ACK_WINDOW:
+                # A request the runner sent before it got the job can still
+                # reach us after the hand-out; the acknowledgement follows
+                # within milliseconds. Decide on a later pass.
+                await db.commit()
+                return
             logger.info(
                 "Runner %s never received job %s (its last message is %s); job requeued",
                 runner.name, job.id, last_message_id,
@@ -1088,10 +1102,7 @@ async def _settle_idle_runner(runner: Runner, status: str, last_message_id: str,
             job.runner_name = None
             job.started_at = None
             continue
-        started = job.started_at
-        if started is not None and started.tzinfo is None:
-            started = started.replace(tzinfo=timezone.utc)
-        if started is not None and now - started < _IDLE_GRACE:
+        if age < _IDLE_GRACE:
             # The runner can poll once more as Online right after it took
             # the job, before its dispatcher marks it Busy.
             await db.commit()
@@ -1204,13 +1215,8 @@ async def dt_get_messages(
     generation = _poll_generation.get(runner_id, 0) + 1
     _poll_generation[runner_id] = generation
     lock = _runner_lock(runner_id)
-    async with lock:
-        await _settle_idle_runner(
-            runner,
-            request.query_params.get("status", ""),
-            request.query_params.get("lastMessageId", ""),
-            db,
-        )
+    status = request.query_params.get("status", "")
+    last_message_id = request.query_params.get("lastMessageId", "")
 
     deadline = asyncio.get_event_loop().time() + _POLL_SECONDS
     while asyncio.get_event_loop().time() < deadline:
@@ -1218,6 +1224,9 @@ async def dt_get_messages(
             if _poll_generation.get(runner_id) != generation or await request.is_disconnected():
                 # A newer poll from this runner replaced this one.
                 return Response(status_code=204)
+            # Every pass, not only the first: a lost hand-out is decided once
+            # its acknowledgement window has passed.
+            await _settle_idle_runner(runner, status, last_message_id, db)
             cancellation = await _pending_cancellation(runner, db)
             if cancellation is not None:
                 logger.info("Runner %s sent cancellation of job %s", runner.name, cancellation["messageId"])
