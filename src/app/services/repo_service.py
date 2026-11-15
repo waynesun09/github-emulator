@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -133,7 +134,14 @@ async def create_repo(
             setattr(repo, key, value)
 
     db.add(repo)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # Two requests for the same name both passed the check above; the
+        # unique index on full_name lets one win. The loser gets the same
+        # 422 as a sequential duplicate, as on GitHub, not a 500.
+        await db.rollback()
+        raise ValueError(f"Repository '{full_name}' already exists.") from exc
     await db.refresh(repo)
 
     await initialize_repository(db, repo, owner, auto_init)
