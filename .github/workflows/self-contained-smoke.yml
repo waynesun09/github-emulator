@@ -177,6 +177,14 @@ jobs:
           EMU: ${{ steps.emu.outputs.url }}
           EMU_CA: ${{ steps.emu.outputs.ca-file }}
         run: scripts/ci-workflow-smoke.sh
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: action-${{ matrix.preset }}
+          path: |
+            ${{ runner.temp }}/github-emulator/*.log
+            ${{ runner.temp }}/github-emulator/runner-*/_diag/*.log
 
   # Which workflow features each runner executes. Informational: a feature
   # failing here is a finding, not a broken build.
