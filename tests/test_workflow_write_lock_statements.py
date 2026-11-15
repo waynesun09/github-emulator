@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.actions import WorkflowJob
 from app.services.workflow_service import check_run_completion, dispatch_ready_jobs
-
 from tests.conftest import API, auth_headers
 
 SHIM = """
