@@ -6,26 +6,26 @@ import zipfile
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
-from sqlalchemy import select, func, or_
+from sqlalchemy import func, or_, select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.api.pagination import pagination_links
-from app.services import artifact_storage, repository_access
 from app.config import settings
-from app.models.actions import Workflow, WorkflowRun, WorkflowJob, Secret, Variable
+from app.models.actions import Secret, Variable, Workflow, WorkflowJob, WorkflowRun
 from app.models.artifact import WorkflowArtifact
-from app.services.secret_crypto import (
-    SecretDecryptError,
-    open_sealed_secret,
-    repo_public_key,
-)
-from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
 from app.schemas.actions import (
     WorkflowJobListResponse,
     WorkflowJobResponse,
     WorkflowListResponse,
     WorkflowRunListResponse,
     WorkflowRunResponse,
+)
+from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services import artifact_storage, repository_access
+from app.services.secret_crypto import (
+    SecretDecryptError,
+    open_sealed_secret,
+    repo_public_key,
 )
 
 router = APIRouter(tags=["actions"])
@@ -557,7 +557,7 @@ async def cancel_workflow_run(
     owner: str, repo: str, run_id: int, db: DbSession, user: AuthUser,
 ):
     """Cancel a workflow run."""
-    repository = await get_repo_or_404(owner, repo, db)
+    await get_repo_or_404(owner, repo, db)
     from app.services.workflow_service import cancel_workflow_run as do_cancel
     run = await do_cancel(db, run_id)
     if run is None:
@@ -580,7 +580,9 @@ async def rerun_workflow(
     rerun sat with every dependent waiting forever (2026-09-27, run 1589).
     """
     from app.services.workflow_service import (
-        create_workflow_run, detect_workflows, materialize_reusable_workflows,
+        create_workflow_run,
+        detect_workflows,
+        materialize_reusable_workflows,
     )
     repository = await get_repo_or_404(owner, repo, db)
     result = await db.execute(
