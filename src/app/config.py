@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # Log a write transaction that holds SQLite's writer lock this long
     # (app/database_diag.py).
     SQLITE_SLOW_WRITE_LOG_MS: int = 1000
+    # Log the event loop running a timer this late (app/database_diag.py).
+    EVENT_LOOP_LAG_LOG_MS: int = 500
     # Requests per token (or client address) per hour that the rate-limit
     # headers and GET /rate_limit report, as github.com does. Nothing is
     # refused at zero, but a client that paces itself on the headers waits
