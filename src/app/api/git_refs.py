@@ -6,6 +6,7 @@ import os
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
+from app.services.branch_service import replay_ref_record
 from app.services.cross_repo_pulls import same_repository_head
 from app.api.deps import require_contents_write, AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
@@ -225,7 +226,11 @@ async def create_ref(
     except RuntimeError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    await _record_branch_change(db, repository, ref, sha, user)
+    await replay_ref_record(
+        db, repository.disk_path, ref, None, sha,
+        lambda: _record_branch_change(db, repository, ref, sha, user),
+        refresh=(repository, user),
+    )
     return _ref_json(ref, sha, owner, repo, BASE)
 
 
@@ -251,13 +256,13 @@ async def update_ref(
             raise ValidationError(message="Cannot force-update this protected branch")
 
     args = ["update-ref", full_ref, sha]
-    old_sha = None
+    try:
+        old_sha = (await _git(repository.disk_path, "rev-parse", full_ref)).strip()
+    except RuntimeError:
+        old_sha = None
     if not force:
-        try:
-            old_sha = (await _git(repository.disk_path, "rev-parse", full_ref)).strip()
+        if old_sha:
             args.append(old_sha)
-        except RuntimeError:
-            pass
         if old_sha:
             try:
                 await _git(repository.disk_path, "merge-base", "--is-ancestor", old_sha, sha)
@@ -269,7 +274,11 @@ async def update_ref(
     except RuntimeError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    await _record_branch_change(db, repository, full_ref, sha, user)
+    await replay_ref_record(
+        db, repository.disk_path, full_ref, old_sha, sha,
+        lambda: _record_branch_change(db, repository, full_ref, sha, user),
+        refresh=(repository, user),
+    )
     return _ref_json(full_ref, sha, owner, repo, BASE)
 
 

@@ -82,12 +82,56 @@ async def record_moved_branch(
     return current
 
 
-async def _move_ref_back(disk_path: str, branch: str, before: str | None, after: str) -> None:
-    """Undo an API commit's ref move, only while the ref is still at ``after``."""
+async def replay_ref_record(
+    db: AsyncSession,
+    disk_path: str,
+    ref: str,
+    before: str | None,
+    after: str,
+    write,
+    *,
+    refresh: tuple = (),
+) -> None:
+    """Run ``write`` (which records a moved ref and commits) through the lock.
+
+    For a route that has already moved ``ref`` on disk from ``before`` to
+    ``after``: a "database is locked" failure is rolled back and ``write``
+    run again, with ``refresh`` reloaded; if the lock persists, the ref is
+    put back (only while still at ``after``) before the 503, so the
+    client's retry finds the repository as it was.
+    """
     import asyncio
 
-    args = ["update-ref", f"refs/heads/{branch}", before, after] if before else [
-        "update-ref", "-d", f"refs/heads/{branch}", after]
+    from app.config import settings
+    from app.database_retry import is_sqlite_database_locked
+    from app.middleware.error_handler import RetryableDatabaseError
+
+    attempts = max(1, settings.SQLITE_WRITE_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            await write()
+            return
+        except Exception as exc:
+            if not (is_sqlite_database_locked(exc) or isinstance(exc, RetryableDatabaseError)):
+                raise
+            await db.rollback()
+            if attempt == attempts:
+                await _move_ref_back(disk_path, ref, before, after)
+                raise RetryableDatabaseError() from exc
+            await asyncio.sleep(max(0, settings.SQLITE_WRITE_RETRY_DELAY_MS) / 1000)
+            for obj in refresh:
+                await db.refresh(obj)
+
+
+async def _move_ref_back(disk_path: str, branch: str, before: str | None, after: str) -> None:
+    """Undo a ref move, only while the ref is still at ``after``.
+
+    ``branch`` is a branch name or a full ``refs/...`` name.
+    """
+    import asyncio
+
+    ref = branch if branch.startswith("refs/") else f"refs/heads/{branch}"
+    args = ["update-ref", ref, before, after] if before else ["update-ref", "-d", ref, after]
     proc = await asyncio.create_subprocess_exec(
         "git", *args, cwd=disk_path,
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
