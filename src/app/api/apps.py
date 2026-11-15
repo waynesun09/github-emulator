@@ -1,17 +1,17 @@
 """Small GitHub Apps/installations surface for resettable dev stacks."""
 
-from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
+from datetime import datetime, timedelta, timezone
 
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
 from sqlalchemy import select
 
-from app.api.deps import AuthUser, DbSession, CurrentUser, get_current_user, get_repo_or_404, require_installation_grant
+from app.api.deps import AuthUser, CurrentUser, DbSession, get_current_user, get_repo_or_404, require_installation_grant
 from app.api.orgs import _is_org_admin
 from app.api.pagination import pagination_links
 from app.config import settings
@@ -19,8 +19,8 @@ from app.models.apps import AppInstallation, AppInstallationToken, GitHubApp
 from app.models.organization import Organization
 from app.models.repository import Repository
 from app.models.user import User
-from app.schemas.user import _fmt_dt
 from app.schemas.settings import InstallationResponse
+from app.schemas.user import _fmt_dt
 from app.services.auth_service import ensure_app_bot
 
 router = APIRouter(tags=["apps"])
@@ -404,6 +404,30 @@ async def list_installation_repositories(installation_id: int, request: Request,
         raise HTTPException(status_code=404, detail="Installation not found")
     repos = (await db.execute(select(Repository).where(Repository.full_name.in_(installation.repositories)))).scalars().all()
     return {"total_count": len(repos), "repositories": [{"id": repo.id, "full_name": repo.full_name, "name": repo.name, "private": repo.private} for repo in repos]}
+
+
+@router.delete("/installation/token", status_code=204)
+async def revoke_installation_token(
+    request: Request, db: DbSession, current_user: CurrentUser
+):
+    """Revoke the installation access token making the call.
+
+    GitHub's "Revoke an installation access token" answers 204, and the
+    token is refused from then on. Clients that mint a short-lived token
+    revoke it when their step ends and treat any other status as failure.
+    A personal access token is refused, as on the repositories route above.
+    """
+    installation_token = getattr(request.state, "installation_token", None)
+    if installation_token is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Resource not accessible by personal access token",
+        )
+    row = await db.get(AppInstallationToken, installation_token.id)
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
+    return None
 
 
 @router.get("/installation/repositories")
