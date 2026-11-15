@@ -11,7 +11,11 @@ class Settings(BaseSettings):
 
     # SQLite database URL
     DATABASE_URL: str = ""
-    SQLITE_BUSY_TIMEOUT_MS: int = 5000
+    # How long a writer waits for SQLite's single writer lock before the
+    # request fails with 503 "database is locked". Under a dozen runners and
+    # parallel clients on a loaded machine, lock waits ran past 5 s (up to
+    # 8.5 s observed); waiting is better than failing a write.
+    SQLITE_BUSY_TIMEOUT_MS: int = 30000
     SQLITE_WRITE_RETRY_ATTEMPTS: int = 2
     SQLITE_WRITE_RETRY_DELAY_MS: int = 100
 
