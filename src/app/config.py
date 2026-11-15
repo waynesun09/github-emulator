@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     # SQLite database URL
     DATABASE_URL: str = ""
     SQLITE_BUSY_TIMEOUT_MS: int = 5000
+    # Requests per token (or client address) per hour that the rate-limit
+    # headers and GET /rate_limit report, as github.com does. Nothing is
+    # refused at zero, but a client that paces itself on the headers waits
+    # for the reset; a large value keeps a busy test suite from doing that.
+    RATE_LIMIT: int = 5000
     # Pooled connections to a file database. A request holds one from its
     # first query (authentication) until it ends, and WAL lets readers run
     # side by side, so the pool, not SQLite, capped concurrency: at
