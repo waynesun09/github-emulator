@@ -51,6 +51,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 36 | fix-jobs-list-unstarted | a15caa9 | A run's jobs list leaves out jobs still waiting on `needs`, as GitHub does (probed by bt-f3) |
 | 37 | fix-run-route-ownership | 91ee48b | Actions writes need the caller's permission: write for dispatch, cancel, re-run and artifacts; admin for secrets, variables and Actions permissions. Cancel acts only on a run of the repository in its path. Job and installation tokens keep their checks at authentication |
 | 38 | fix-sqlite-pool-size | 6e8b497 | SQLite connection pool 20 + 40 (`SQLITE_POOL_SIZE`, `SQLITE_MAX_OVERFLOW`); the default 5 + 10 was exhausted at 12 runners (bt-f4) |
+| 39 | fix-github-context-fields | 66bac8a | `github.actor`, `actor_id`, `triggering_actor`, `api_url`, `graphql_url`, `repository_id`, `repository_owner_id`, `run_attempt` and `workflow_ref` filled where the emulator renders expressions and in the job message (so `GITHUB_ACTOR` and the rest are set); runs gain `run_started_at` and `display_title`, jobs `created_at`, `head_sha` and `head_branch` (bt-f3 A3, A5) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
