@@ -33,6 +33,8 @@ async def lifespan(app: FastAPI):
         from app.services.memory_watch import configure_from_settings
         memory_watch = configure_from_settings()
         memory_watch.start()
+    from app.services import lag_probe
+    _lag_probe_task = lag_probe.start()  # noqa: F841 (kept alive for the process)
 
     # Start SSH server
     ssh_server = None
