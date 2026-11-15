@@ -58,6 +58,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 43 | fix-write-after-git | 68a4317 | `git/refs` create and update get the same replay, and the ref is put back if the lock persists (bt-f5: 503 then 422 "Reference already exists") |
 | 44 | diag-sqlite-writer-lock | 8cff810, aec1d34 | The `github_emulator.database` logger names a request holding SQLite's writer lock over `SQLITE_SLOW_WRITE_LOG_MS` (1000) and says how long a "database is locked" statement waited |
 | 45 | fix-sqlite-busy-wait | 943f107 | `SQLITE_BUSY_TIMEOUT_MS` defaults to 30000: writers queue for SQLite's lock instead of failing with 503 after 5 s (bt-f5: 97 failures, all after 5019-5368 ms) |
+| 46 | fix-rest-json-body-and-token-revoke | 7f2cab1 (+ apps.py import sort) | `/api/v3` writes read a JSON object or array body whatever the Content-Type (missing, form-encoded, text/plain), as GitHub does; `DELETE /installation/token` revokes the calling token (204) (bt-f3, picked by bt-f4) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
