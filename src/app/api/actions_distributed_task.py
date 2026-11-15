@@ -1066,6 +1066,11 @@ async def _pending_cancellation(runner: Runner, db) -> dict | None:
     }
 
 
+def _job_started(job: WorkflowJob) -> bool:
+    """Whether the runner reported any step of ``job`` (timeline updates)."""
+    return any((step or {}).get("status") not in (None, "queued") for step in (job.steps or []))
+
+
 async def _settle_idle_runner(runner: Runner, status: str, last_message_id: str, db) -> None:
     """Believe a runner that says it is idle.
 
@@ -1096,7 +1101,18 @@ async def _settle_idle_runner(runner: Runner, status: str, last_message_id: str,
         if started is not None and started.tzinfo is None:
             started = started.replace(tzinfo=timezone.utc)
         age = now - started if started is not None else _IDLE_GRACE
-        if last_message_id and last_message_id != str(job.id) and job.id not in _acknowledged:
+        # Never received: the runner names another message as its last, or
+        # (a runner that has had no message since it connected) names none
+        # and the job never started a step. A poll the runner gave up on
+        # before the hand-out came back looks like that; failing the job
+        # then lost a run the runner never saw (bt-f2, run 43740835949).
+        # A runner restarted mid-job also sends no last message, but its
+        # job has started steps, so it still fails below.
+        never_received = (
+            (last_message_id and last_message_id != str(job.id))
+            or (not last_message_id and not _job_started(job))
+        )
+        if never_received and job.id not in _acknowledged:
             if age < _ACK_WINDOW:
                 # A request the runner sent before it got the job can still
                 # reach us after the hand-out; the acknowledgement follows
@@ -1117,7 +1133,7 @@ async def _settle_idle_runner(runner: Runner, status: str, last_message_id: str,
             if requeued.rowcount == 1:
                 logger.info(
                     "Runner %s never received job %s (its last message is %s); job requeued",
-                    runner.name, job.id, last_message_id,
+                    runner.name, job.id, last_message_id or "none",
                 )
             continue
         if age < _IDLE_GRACE:
