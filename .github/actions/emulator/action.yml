@@ -111,11 +111,14 @@ runs:
       env:
         ROOT: ${{ github.action_path }}/../../..
         VENV: ${{ inputs.state-dir }}/venv
+        EXTRAS: ${{ inputs.database == 'postgres' && '--extra postgres' || '' }}
       run: |
         # The versions in uv.lock, each checked against its hash: not the
-        # newest release of every package on the day of the run.
+        # newest release of every package on the day of the run. PostgreSQL
+        # adds its driver (asyncpg), the lock's postgres extra.
         uv venv -q --python 3.12 "$VENV"
-        uv export -q --project "$ROOT" --frozen --no-dev --no-emit-project --format requirements-txt -o "$VENV.requirements.txt"
+        # shellcheck disable=SC2086 # EXTRAS is empty or one flag and its value
+        uv export -q --project "$ROOT" --frozen --no-dev --no-emit-project $EXTRAS --format requirements-txt -o "$VENV.requirements.txt"
         VIRTUAL_ENV="$VENV" uv pip install -q --require-hashes -r "$VENV.requirements.txt"
 
     - name: Allow ports below 1024

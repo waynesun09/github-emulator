@@ -5,7 +5,7 @@ name: self-contained smoke
 # and CPU of the two processes.
 on:
   push:
-    branches: [ci-self-contained, spike-postgres]
+    branches: [ci-self-contained, spike-postgres, spike-postgres-2]
   pull_request:
   workflow_dispatch:
 
