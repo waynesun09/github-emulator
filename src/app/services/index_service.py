@@ -111,7 +111,13 @@ async def index_repository(db: AsyncSession, repo: Repository) -> int:
             size = 0
             if not _is_binary(path):
                 raw = await get_file_content(disk_path, ref, path)
-                if raw is not None:
+                if raw is not None and b"\x00" in raw[:8000]:
+                    # Binary content behind a text-like name. git takes a NUL
+                    # in the first 8000 bytes as binary, and GitHub's code
+                    # search skips binary files. PostgreSQL also refuses NUL
+                    # in a text column, which aborted the post-push work.
+                    size = len(raw)
+                elif raw is not None:
                     size = len(raw)
                     try:
                         content_text = raw.decode("utf-8", errors="replace")
