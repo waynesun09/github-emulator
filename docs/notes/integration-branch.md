@@ -72,6 +72,8 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 57 | fix-runner-delete-and-poll-snapshot | 7a6a4a7 | Runner deletes through the runner protocol and pipelines routes detach the jobs it ran (they pointed at a deleted runner); the pool long-poll commits before each wait (found by the PostgreSQL spike) |
 | 58 | fix-comment-on-deleted-issue | 769cb56 | The cross-reference hook skips a comment whose issue was deleted (with its repository) while the comment was written; it raised NoResultFound in the commit, a 500 (found by fullsend round 2) |
 | 59 | fix-recheck-rest-gaps | eeb50f4 | Conformance recheck (REST): pull requests carry their issue's labels; label names with "/" reach the per-name routes; PATCH issue sets state_reason on a close or reopen; GET hash-algorithm |
+| 60 | fix-recheck-actions-gaps | 7fd220f | Conformance recheck (Actions): a job token on /installation/* lists its repository and can revoke itself; refused credentials answer "Bad credentials"; finished job logs are the uploaded step logs (lines no longer cut at 1024); run/with/env rendering writes false as "false", fills the ref and repository github keys and leaves runner-only values to the runner |
+| 61 | fix-push-tasks-rollback | a9878ba | A failed post-push step logs, rolls back and reloads, so the push event after it still runs (PostgreSQL aborted the transaction and the pull request's synchronize never happened) |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
