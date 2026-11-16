@@ -21,6 +21,23 @@ def _decode_json(value: str) -> dict:
     return json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
 
 
+# Jobs whose token was revoked through DELETE /installation/token. The runner
+# authenticates with the same token, so the revocation applies only where the
+# job token stands in for GITHUB_TOKEN (the REST, GraphQL and git routes that
+# authenticate through app.api.deps), never to the runner protocol. Kept in
+# memory: the token expires within the hour anyway, and the emulator is one
+# process.
+_revoked_api_tokens: set[str] = set()
+
+
+def revoke_job_token_for_api(token: str) -> None:
+    _revoked_api_tokens.add(token)
+
+
+def job_token_revoked_for_api(token: str) -> bool:
+    return token in _revoked_api_tokens
+
+
 def issue_job_token(job: WorkflowJob) -> str:
     """Issue the JWT-shaped OAuth token required by the upstream runner."""
     now = int(time.time())
