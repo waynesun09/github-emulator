@@ -528,11 +528,11 @@ class _IfExpressionParser:
             self._take(")")
             return self._parse_accessors(self._call(token, arguments))
 
-        if token == "true":
+        if token == "true":  # noqa: S105 (an expression token, not a password)
             return True
-        if token == "false":
+        if token == "false":  # noqa: S105 (an expression token, not a password)
             return False
-        if token == "null":
+        if token == "null":  # noqa: S105 (an expression token, not a password)
             return None
         return self._parse_accessors(_lookup_context_value(self.context, token))
 
