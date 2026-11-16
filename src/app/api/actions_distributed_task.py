@@ -38,7 +38,7 @@ from app.services.action_download_service import (
 )
 from app.services.auth_service import hash_token
 from app.services.job_token_service import issue_job_token
-from app.services.workflow_service import check_run_completion, dispatch_ready_jobs
+from app.services.workflow_service import check_run_completion, dispatch_ready_jobs, static_github_facts
 
 router = APIRouter(tags=["actions-distributed-task"])
 
@@ -598,6 +598,9 @@ def _job_request_message(
             "system.github.ref": _variable(ref),
             "system.github.sha": _variable(sha),
             "system.github.workflow": _variable(workflow_name),
+            # runner.environment and RUNNER_ENVIRONMENT. The jobs stand in for
+            # GitHub-hosted ones, which is what workflows here are written for.
+            "system.runnerEnvironment": _variable("github-hosted"),
         },
         "contextData": {
             # The runner expands an expression only when every context the
@@ -647,6 +650,9 @@ def _job_request_message(
                     if run and run.workflow and run.workflow.path else ""
                 ),
                 "workspace": "",
+                # ref_name, ref_type, ref_protected, workflow_sha and the
+                # rest: the runner exports the first four as GITHUB_* env.
+                **static_github_facts(ref, sha, repo_full_name, repo.private if repo else None),
             }),
         },
         "resources": {
