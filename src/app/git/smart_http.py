@@ -338,7 +338,7 @@ async def _post_receive_pack_tasks(repo_id: int, user_id: int | None) -> None:
                     changed_deleted = before is not None and after is None
                     break
         except Exception:
-            pass
+            logger.warning("Reading branches from disk failed for repository %s", repo_id, exc_info=True)
 
         try:
             await _sync_branches_to_db(db, repository)
