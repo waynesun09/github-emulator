@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.api.deps import CurrentUser, DbSession, get_repo_record_or_404
 from app.config import settings
-from app.git.bare_repo import get_file_content, resolve_ref
+from app.git.bare_repo import get_file_content
 from app.services import repository_access
 
 router = APIRouter(tags=["raw"])
@@ -86,8 +86,9 @@ async def raw_file(
     if not repository.disk_path:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    resolved = await resolve_ref(repository.disk_path, ref) or ref
-    content = await get_file_content(repository.disk_path, resolved, path)
+    # "<ref>:<path>" resolves the ref the way rev-parse does, in the same
+    # process that reads the file.
+    content = await get_file_content(repository.disk_path, ref, path)
     if content is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
