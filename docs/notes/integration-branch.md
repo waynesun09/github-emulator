@@ -80,6 +80,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 65 | perf-parallel-runners | f431343 | A registration token registers several runners until it expires; pool agent list, update and remove are scoped to the runner's repository, organization or enterprise |
 | 66 | perf-contents-one-git | 941ca2f | Contents, README and raw reads run one git process per call instead of two or three; responses pinned by a recorded snapshot |
 | 67 | perf-contents-one-git | 1c7b944 | GET contents and GET readme answer the raw media types with the file bytes; a file over 1 MiB has encoding none and empty content in JSON |
+| 68 | perf-contents-one-git | 260296d | The JSON content limit starts at exactly 1 MiB (1,048,576 bytes), as on github.com |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
