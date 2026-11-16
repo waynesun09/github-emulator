@@ -161,7 +161,9 @@ async def _resolve_user(
     if validated is not None:
         job, run = validated
         if job_token_revoked_for_api(token_value):
-            return None
+            # Refused outright, as GitHub does: falling through to anonymous
+            # let a revoked token still read public repositories.
+            raise HTTPException(status_code=401, detail="Bad credentials")
         request.state.workflow_job = job
         request.state.workflow_run = run
         request.state.workflow_job_token = token_value
