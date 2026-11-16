@@ -76,6 +76,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 61 | fix-push-tasks-rollback | a9878ba | A failed post-push step logs, rolls back and reloads, so the push event after it still runs (PostgreSQL aborted the transaction and the pull request's synchronize never happened) |
 | 62 | fix-recheck-actions-gaps-2 | 3d2a781 | A revoked job token is refused (401) on every API route, not treated as anonymous; github.token inside an expression is left for the runner |
 | 63 | perf-parallel-runners | 9151d0e | Upstream runners are unpacked once and registered in parallel (was about 5 s per runner, one after another) |
+| 64 | perf-parallel-runners | b81825d | A runner registration without a name (actions/runner's config.sh) gets its own runner instead of re-keying the placeholder row, so runners can register at the same time |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
