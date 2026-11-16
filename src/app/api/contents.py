@@ -99,8 +99,9 @@ _RAW_MEDIA_TYPES = (
     "application/vnd.github.raw+json",
 )
 
-# Above 1 MiB GitHub's JSON object carries no content: "encoding" is "none"
-# and "content" is "". The raw media type still returns the bytes.
+# From 1 MiB (1,048,576 bytes, checked on github.com) GitHub's JSON object
+# carries no content: "encoding" is "none" and "content" is "". The raw
+# media type still returns the bytes.
 _JSON_CONTENT_LIMIT = 1024 * 1024
 
 
@@ -122,7 +123,7 @@ def _get_file_response(
     if media is not None:
         return Response(content=content_bytes, media_type=media)
     body = _file_response(owner, repo_name, path, content_bytes, sha, ref, BASE)
-    if len(content_bytes) > _JSON_CONTENT_LIMIT:
+    if len(content_bytes) >= _JSON_CONTENT_LIMIT:
         body["encoding"] = "none"
         body["content"] = ""
     return body
