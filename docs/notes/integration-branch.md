@@ -78,6 +78,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 63 | perf-parallel-runners | 9151d0e | Upstream runners are unpacked once and registered in parallel (was about 5 s per runner, one after another) |
 | 64 | perf-parallel-runners | b81825d | A runner registration without a name (actions/runner's config.sh) gets its own runner instead of re-keying the placeholder row, so runners can register at the same time |
 | 65 | perf-parallel-runners | f431343 | A registration token registers several runners until it expires; pool agent list, update and remove are scoped to the runner's repository, organization or enterprise |
+| 66 | perf-contents-one-git | 941ca2f | Contents, README and raw reads run one git process per call instead of two or three; responses pinned by a recorded snapshot |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
