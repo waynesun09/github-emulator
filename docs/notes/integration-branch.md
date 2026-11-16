@@ -71,6 +71,7 @@ All are cut from `main` at c1190a9 unless a note says otherwise.
 | 56 | fix-runner-first-poll-requeue | ce89cbe | A job handed to a runner's abandoned first long-poll (no lastMessageId) is requeued, not failed after the grace period; a runner restarted mid-job still fails it (bt-f2/bt-f4, run 43740835949 shard b) |
 | 57 | fix-runner-delete-and-poll-snapshot | 7a6a4a7 | Runner deletes through the runner protocol and pipelines routes detach the jobs it ran (they pointed at a deleted runner); the pool long-poll commits before each wait (found by the PostgreSQL spike) |
 | 58 | fix-comment-on-deleted-issue | 769cb56 | The cross-reference hook skips a comment whose issue was deleted (with its repository) while the comment was written; it raised NoResultFound in the commit, a 500 (found by fullsend round 2) |
+| 59 | fix-recheck-rest-gaps | eeb50f4 | Conformance recheck (REST): pull requests carry their issue's labels; label names with "/" reach the per-name routes; PATCH issue sets state_reason on a close or reopen; GET hash-algorithm |
 
 Nothing is pending. bt-f4-suite-timing is measurement only.
 
