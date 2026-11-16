@@ -289,13 +289,28 @@ start() {
 
   # One runner executes one job at a time, so job concurrency is the number
   # of runner processes. Each gets its own work directory.
-  for i in $(seq 1 "$RUNNERS"); do
-    case "$KIND" in
-      python) start_python_runner "$i" ;;
-      upstream) start_upstream_runner "$i" ;;
-      *) echo "CI_STACK_RUNNER_KIND must be python or upstream, got $KIND" >&2; exit 2 ;;
-    esac
-  done
+  case "$KIND" in
+    python)
+      for i in $(seq 1 "$RUNNERS"); do start_python_runner "$i"; done ;;
+    upstream)
+      # Registering a real runner takes seconds (config.sh is a .NET
+      # program), and nothing orders one runner after another, so register
+      # them all at once and fail if any of them fails.
+      fetch_upstream_runner
+      local pids=() failed=0
+      for i in $(seq 1 "$RUNNERS"); do
+        start_upstream_runner "$i" &
+        pids+=($!)
+      done
+      for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+          echo "runner $((i + 1)) did not start; see $DIR/runner-$((i + 1)).log" >&2
+          failed=1
+        fi
+      done
+      [ "$failed" = 0 ] || exit 1 ;;
+    *) echo "CI_STACK_RUNNER_KIND must be python or upstream, got $KIND" >&2; exit 2 ;;
+  esac
   echo "emulator $BASE (pid $(cat "$DIR/emulator.pid")), $RUNNERS $KIND runner(s)"
   if [ "$TLS" = 1 ]; then
     echo "trust $CA (CURL_CA_BUNDLE/NODE_EXTRA_CA_CERTS) or $DIR/tls/bundle.pem (SSL_CERT_FILE/GIT_SSL_CAINFO)"
@@ -316,12 +331,10 @@ start_python_runner() {
   echo $! >"$DIR/runner-$i.pid"
 }
 
-# The real actions/runner, registered at enterprise scope the way
-# src/runners/upstream/entrypoint.sh does it. Linux x64 only.
-start_upstream_runner() {
-  local i="$1"
-  local home="$DIR/runner-$i" enterprise="${CI_STACK_ENTERPRISE:-breadboard}"
+# Download and unpack the real actions/runner once; each runner copies it.
+fetch_upstream_runner() {
   local tarball="$DIR/actions-runner-$UPSTREAM_VERSION.tar.gz"
+  local dist="$DIR/actions-runner-$UPSTREAM_VERSION"
   if [ ! -f "$tarball" ]; then
     curl -fsSL -o "$tarball.partial" \
       "https://github.com/actions/runner/releases/download/v$UPSTREAM_VERSION/actions-runner-linux-x64-$UPSTREAM_VERSION.tar.gz"
@@ -334,8 +347,22 @@ start_upstream_runner() {
     fi
     mv "$tarball.partial" "$tarball"
   fi
+  if [ ! -d "$dist" ]; then
+    rm -rf "$dist.partial"
+    mkdir -p "$dist.partial"
+    tar -xzf "$tarball" -C "$dist.partial"
+    mv "$dist.partial" "$dist"
+  fi
+}
+
+# The real actions/runner, registered at enterprise scope the way
+# src/runners/upstream/entrypoint.sh does it. Linux x64 only. Runs in the
+# background, one per runner, after fetch_upstream_runner.
+start_upstream_runner() {
+  local i="$1"
+  local home="$DIR/runner-$i" enterprise="${CI_STACK_ENTERPRISE:-breadboard}"
   mkdir -p "$home"
-  tar -xzf "$tarball" -C "$home"
+  cp -a "$DIR/actions-runner-$UPSTREAM_VERSION/." "$home/"
   export_trust
   local reg
   reg="$(curl -sf -X POST -H "Authorization: token $ADMIN_TOKEN" \
