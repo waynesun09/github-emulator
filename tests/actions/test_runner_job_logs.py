@@ -157,3 +157,46 @@ async def test_timeline_updates_are_answered_as_a_collection(client, two_job_run
     )
     assert resp.status_code == 200
     assert resp.json() == {"count": 1, "value": records}
+
+
+@pytest.mark.asyncio
+async def test_a_finished_job_serves_its_uploaded_step_logs_uncut(
+    client, db_session, two_job_run, test_token
+):
+    """The feed's lines are cut at 1024 characters by the runner; the uploaded step logs are not."""
+    from app.models.actions import WorkflowJob
+
+    body, auth = await _claim(client, test_token, "runner-long")
+    plan = body["plan"]["planId"]
+    timeline = body["timeline"]["id"]
+    job_id = _job_id(body)
+    long_line = "x" * 3000
+    await client.post(
+        f"/_apis/distributedtask/hubs/Build/plans/{plan}/timelines/{timeline}/records/{timeline}/feed",
+        json={"value": [long_line[:1024]], "count": 1}, headers=auth,
+    )
+    for text in (b"2026-11-16T00:00:00.0000000Z set up\n", f"2026-11-16T00:00:01.0000000Z {long_line}\n".encode()):
+        log = (await client.post(
+            f"/_apis/distributedtask/hubs/Build/plans/{plan}/logs", json={"path": "logs\\x"}, headers=auth,
+        )).json()
+        await client.post(
+            f"/_apis/distributedtask/hubs/Build/plans/{plan}/logs/{log['id']}",
+            content=text, headers={**auth, "content-type": "application/octet-stream"},
+        )
+    url = f"{API}/repos/{REPO}/actions/jobs/{job_id}/logs"
+
+    running = await client.get(url, headers=auth_headers(test_token))
+    assert running.status_code == 200
+    assert long_line not in running.text  # still the live feed
+
+    job = await db_session.get(WorkflowJob, job_id)
+    await db_session.refresh(job)
+    job.status = "completed"
+    await db_session.commit()
+
+    done = await client.get(url, headers=auth_headers(test_token))
+    assert done.status_code == 200
+    assert done.text.splitlines() == [
+        "2026-11-16T00:00:00.0000000Z set up",
+        f"2026-11-16T00:00:01.0000000Z {long_line}",
+    ]

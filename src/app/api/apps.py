@@ -22,6 +22,7 @@ from app.models.user import User
 from app.schemas.settings import InstallationResponse
 from app.schemas.user import _fmt_dt
 from app.services.auth_service import ensure_app_bot
+from app.services.job_token_service import revoke_job_token_for_api
 
 router = APIRouter(tags=["apps"])
 
@@ -418,6 +419,19 @@ async def revoke_installation_token(
     A personal access token is refused, as on the repositories route above.
     """
     installation_token = getattr(request.state, "installation_token", None)
+    workflow_job = getattr(request.state, "workflow_job", None)
+    if current_user is None:
+        # A revoked or unknown token, as on GitHub; a missing one is the
+        # usual "Requires authentication".
+        raise HTTPException(
+            status_code=401,
+            detail="Bad credentials" if request.headers.get("authorization") else "Requires authentication",
+        )
+    if installation_token is None and workflow_job is not None:
+        # A job's GITHUB_TOKEN is an installation token on GitHub, and a job
+        # may revoke it. The runner keeps its own use of the token.
+        revoke_job_token_for_api(request.state.workflow_job_token)
+        return None
     if installation_token is None:
         raise HTTPException(
             status_code=403,
@@ -443,6 +457,28 @@ async def list_token_installation_repositories(
     personal access token must be refused with 403 rather than a missing route.
     """
     installation_token = getattr(request.state, "installation_token", None)
+    workflow_run = getattr(request.state, "workflow_run", None)
+    if current_user is None:
+        # A revoked or unknown token, as on GitHub; a missing one is the
+        # usual "Requires authentication".
+        raise HTTPException(
+            status_code=401,
+            detail="Bad credentials" if request.headers.get("authorization") else "Requires authentication",
+        )
+    if installation_token is None and workflow_run is not None:
+        # A job's GITHUB_TOKEN is an installation token for the run's one
+        # repository. Answering 403 made clients that probe this route
+        # (fullsend's IsInstallationToken) take a job token for a PAT.
+        own = await db.get(Repository, workflow_run.repo_id)
+        repos = [own] if own is not None else []
+        return {
+            "total_count": len(repos),
+            "repository_selection": "selected",
+            "repositories": [
+                {"id": r.id, "full_name": r.full_name, "name": r.name, "private": r.private}
+                for r in repos
+            ],
+        }
     if installation_token is None:
         raise HTTPException(
             status_code=403,
