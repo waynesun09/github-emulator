@@ -4,7 +4,7 @@ Recorded on github.com by bt-f3 (waynesun09/tmp-emu-contents-bt-f3):
 - Accept application/vnd.github.raw, .v3.raw or .raw+json: a file answers
   200 with its bytes and that type as the Content-Type; a directory still
   answers the JSON listing; a missing path answers the JSON 404.
-- In the JSON media type, a file over 1 MiB has "encoding": "none" and
+- In the JSON media type, a file of 1 MiB or more has "encoding": "none" and
   "content": "", with its real size and sha; the raw media type still
   returns all of its bytes.
 """
@@ -102,9 +102,15 @@ async def test_a_file_over_1_mib_has_no_content_in_json(client, media_repo):
 
 
 @pytest.mark.asyncio
-async def test_a_file_of_exactly_1_mib_still_has_its_content(client, media_repo):
-    await _put(client, media_repo, "edge.bin", b"x" * (1024 * 1024))
+@pytest.mark.parametrize("size, encoding", [(1024 * 1024 - 1, "base64"), (1024 * 1024, "none")])
+async def test_the_json_content_limit_starts_at_exactly_1_mib(client, media_repo, size, encoding):
+    # github.com, probed by bt-f3: 1,048,575 bytes is base64, 1,048,576 is "none".
+    await _put(client, media_repo, "edge.bin", b"x" * size)
     resp = await client.get(f"{API}/repos/testuser/media/contents/edge.bin", headers=media_repo)
     body = resp.json()
-    assert body["encoding"] == "base64"
-    assert base64.b64decode(body["content"]) == b"x" * (1024 * 1024)
+    assert body["size"] == size
+    assert body["encoding"] == encoding
+    if encoding == "base64":
+        assert base64.b64decode(body["content"]) == b"x" * size
+    else:
+        assert body["content"] == ""
