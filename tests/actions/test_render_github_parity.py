@@ -71,3 +71,8 @@ def test_a_server_only_value_still_renders_runner_values_empty():
     # Outside a step (a concurrency group, say) nothing re-evaluates, so the
     # old rendering stands.
     assert render_expressions("${{ github.workspace }}", CONTEXT) == ""
+
+
+def test_an_operator_over_the_token_is_left_for_the_runner():
+    steps = build_steps_data([{"run": "echo ${{ github.token != '' }}"}], {}, CONTEXT)
+    assert steps[0]["run"] == "echo ${{ github.token != '' }}"

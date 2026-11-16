@@ -162,7 +162,7 @@ _RUNNER_CONTEXT_RE = re.compile(r"(?<![\w.])runner\.")
 # running, its file commands, and the job's own status. Rendered here they came
 # out empty; the runner fills them in when they are left for it.
 _RUNNER_FILLED = (
-    r"github\.(?:workspace|action|action_path|action_ref|action_repository|action_status"
+    r"github\.(?:token|workspace|action|action_path|action_ref|action_repository|action_status"
     r"|event_path|path|env|output|state|step_summary|job)(?![\w])|job\."
 )
 _RUNNER_FILLED_RE = re.compile(r"(?<![\w.])(?:" + _RUNNER_FILLED + ")")

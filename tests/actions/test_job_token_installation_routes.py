@@ -17,6 +17,17 @@ from tests.conftest import auth_headers
 API = "/api/v3"
 
 
+@pytest.fixture(autouse=True)
+def _forget_revocations():
+    # Each test database restarts job ids, so two tests can mint the same
+    # token; a revocation must not carry over.
+    from app.services import job_token_service
+
+    job_token_service._revoked_api_tokens.clear()
+    yield
+    job_token_service._revoked_api_tokens.clear()
+
+
 @pytest.fixture
 async def job_token(client, db_session, test_user, test_token):
     resp = await client.post(f"{API}/user/repos", json={"name": "jobtok"}, headers=auth_headers(test_token))
@@ -64,3 +75,13 @@ async def test_a_personal_access_token_is_still_refused(client, test_token):
     for method, path in (("get", "repositories"), ("delete", "token")):
         resp = await getattr(client, method)(f"{API}/installation/{path}", headers=auth_headers(test_token))
         assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_a_revoked_job_token_is_refused_even_on_a_public_repository(client, job_token):
+    headers = {"Authorization": f"Bearer {job_token}"}
+    assert (await client.get(f"{API}/repos/testuser/jobtok", headers=headers)).status_code == 200
+    assert (await client.delete(f"{API}/installation/token", headers=headers)).status_code == 204
+    after = await client.get(f"{API}/repos/testuser/jobtok", headers=headers)
+    assert after.status_code == 401, after.text
+    assert after.json()["message"] == "Bad credentials"
