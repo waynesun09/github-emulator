@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/runner-agent-routes-are-not-scoped-to-the-runner.md`
 - `docs/bugs/fixed/actions-write-routes-do-not-check-the-repository-role.md`
 - `docs/bugs/fixed/job-server-routes-do-not-validate-the-job-token.md`
 - `docs/bugs/fixed/graphql-repository-visibility.md`
