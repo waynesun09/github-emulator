@@ -100,6 +100,8 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/installation-token-revoke-route-missing.md`
+- `docs/bugs/fixed/json-body-refused-without-a-json-content-type.md`
 - `docs/bugs/fixed/rate-limit-is-fixed-at-5000.md`
 - `docs/bugs/fixed/repository-private-and-visibility-drift.md`
 - `docs/bugs/fixed/author-can-approve-their-own-pull-request.md`
