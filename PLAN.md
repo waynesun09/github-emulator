@@ -120,6 +120,9 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/fullsend-installation-token-attribution-and-review-loop.md`
 - `docs/bugs/fixed/cancelled-run-leaves-active-runner-job.md`
 - `docs/bugs/fixed/branch-selector-lists-only-the-first-100-branches.md`
+- `docs/bugs/fixed/raw-githubusercontent-requests-are-not-served.md`
+- `docs/bugs/fixed/contents-reads-run-several-git-processes.md`
+- `docs/bugs/fixed/contents-ignore-the-raw-media-type-and-the-1-mib-limit.md`
 
 ## Decisions
 
