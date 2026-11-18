@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/notice-commands-stay-raw-on-the-upstream-runner.md`
 - `docs/bugs/fixed/python-runner-uses-a-fixed-bash.md`
 - `docs/bugs/fixed/gh-in-upstream-runner-steps-calls-github-com.md`
 - `docs/bugs/fixed/upstream-runner-logs-land-on-the-wrong-job.md`
