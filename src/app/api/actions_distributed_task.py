@@ -296,8 +296,12 @@ async def dt_oauth_token(request: Request, db: DbSession, runner_id: int = Query
     }
 
 
-async def _get_runner_from_token(request: Request, db) -> Runner:
-    """Authenticate a runner from Authorization header."""
+async def _get_runner_from_token(request: Request, db, allow_remove_only: bool = False) -> Runner:
+    """Authenticate a runner from Authorization header.
+
+    A remove-only credential (config.sh remove's) is refused unless the route
+    allows it: only deleting an agent does.
+    """
     auth = request.headers.get("Authorization", "")
     challenge = {"WWW-Authenticate": "Bearer"}
     token = ""
@@ -316,7 +320,7 @@ async def _get_runner_from_token(request: Request, db) -> Runner:
         select(Runner).where(Runner.token_hash == token_hash)
     )
     runner = result.scalar_one_or_none()
-    if runner is None:
+    if runner is None or (runner.remove_only and not allow_remove_only):
         raise HTTPException(status_code=401, detail="Invalid token", headers=challenge)
     return runner
 
@@ -528,16 +532,14 @@ async def dt_delete_pool_agent(
     pool_id: int, agent_id: int, request: Request, db: DbSession,
 ):
     """Remove a pool-scoped agent."""
-    authenticated_runner = await _get_runner_from_token(request, db)
+    authenticated_runner = await _get_runner_from_token(request, db, allow_remove_only=True)
     result = await db.execute(select(Runner).where(Runner.id == agent_id))
     runner = result.scalar_one_or_none()
     if runner is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     await db.delete(runner)
-    if authenticated_runner.id != runner.id and authenticated_runner.name == "unnamed-runner":
-        # config.sh remove authenticates with a broker identity from its own
-        # unnamed runner-registration call; like --replace's, it is not a
-        # runner, so it goes with the agent it removed.
+    if authenticated_runner.remove_only and authenticated_runner.id != runner.id:
+        # config.sh remove's credential is spent once the agent is gone.
         await db.delete(authenticated_runner)
     await db.commit()
     return {"status": "removed"}
