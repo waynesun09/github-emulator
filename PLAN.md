@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/compare-returns-an-empty-merge-base.md`
 - `docs/bugs/fixed/contents-update-ignores-the-sha-precondition.md`
 - `docs/bugs/fixed/issue-create-drops-unknown-labels.md`
 - `docs/bugs/fixed/duplicate-creates-do-not-report-already-exists.md`
