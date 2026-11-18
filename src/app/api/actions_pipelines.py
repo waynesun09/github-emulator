@@ -68,7 +68,8 @@ async def pipelines_register_enterprise_runner(
         last_heartbeat=datetime.now(timezone.utc),
     )
     db.add(runner)
-    await db.delete(registration)
+    # The registration token stays until it expires: on GitHub one token
+    # registers any number of runners within its hour.
     await db.commit()
     await db.refresh(runner)
     base = _request_base(request)
@@ -158,7 +159,8 @@ async def pipelines_register_runner(
         last_heartbeat=datetime.now(timezone.utc),
     )
     db.add(runner)
-    await db.delete(reg)
+    # The registration token stays until it expires: on GitHub one token
+    # registers any number of runners within its hour.
     await db.commit()
     await db.refresh(runner)
 
