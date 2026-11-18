@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/rest-labels-state-reason-and-hash-algorithm-gaps.md`
 - `docs/bugs/fixed/installation-token-revoke-route-missing.md`
 - `docs/bugs/fixed/json-body-refused-without-a-json-content-type.md`
 - `docs/bugs/fixed/rate-limit-is-fixed-at-5000.md`
