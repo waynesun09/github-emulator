@@ -100,6 +100,8 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/issue-create-drops-unknown-labels.md`
+- `docs/bugs/fixed/duplicate-creates-do-not-report-already-exists.md`
 - `docs/bugs/fixed/team-membership-routes-missing.md`
 - `docs/bugs/fixed/graphql-repository-visibility.md`
 - `docs/bugs/fixed/graphql-pull-request-payload-missing-greenlet.md`
