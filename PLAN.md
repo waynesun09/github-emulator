@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/job-server-routes-do-not-validate-the-job-token.md`
 - `docs/bugs/fixed/graphql-repository-visibility.md`
 - `docs/bugs/fixed/graphql-pull-request-payload-missing-greenlet.md`
 - `docs/bugs/fixed/git-push-does-not-synchronize-pull-requests.md`
