@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/upstream-runner-logs-land-on-the-wrong-job.md`
 - `docs/bugs/fixed/upstream-runner-job-outputs-are-empty.md`
 - `docs/bugs/fixed/graphql-repository-visibility.md`
 - `docs/bugs/fixed/graphql-pull-request-payload-missing-greenlet.md`
