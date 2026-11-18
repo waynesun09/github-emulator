@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/gh-in-upstream-runner-steps-calls-github-com.md`
 - `docs/bugs/fixed/upstream-runner-logs-land-on-the-wrong-job.md`
 - `docs/bugs/fixed/upstream-runner-job-outputs-are-empty.md`
 - `docs/bugs/fixed/graphql-repository-visibility.md`
