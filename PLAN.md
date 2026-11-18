@@ -100,6 +100,7 @@ Actions visibility and runner evaluation.
 
 ## Fixed Bugs
 
+- `docs/bugs/fixed/rate-limit-is-fixed-at-5000.md`
 - `docs/bugs/fixed/repository-private-and-visibility-drift.md`
 - `docs/bugs/fixed/author-can-approve-their-own-pull-request.md`
 - `docs/bugs/fixed/app-bot-permission-is-not-found.md`
