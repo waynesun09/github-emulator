@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # used all 15 and every other request queued for one.
     SQLITE_POOL_SIZE: int = 20
     SQLITE_MAX_OVERFLOW: int = 40
-    SQLITE_WRITE_RETRY_ATTEMPTS: int = 2
+    SQLITE_WRITE_RETRY_ATTEMPTS: int = 5
     SQLITE_WRITE_RETRY_DELAY_MS: int = 100
 
     # Secret key for JWT/session signing
