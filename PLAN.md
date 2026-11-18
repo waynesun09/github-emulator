@@ -120,12 +120,14 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/fullsend-installation-token-attribution-and-review-loop.md`
 - `docs/bugs/fixed/cancelled-run-leaves-active-runner-job.md`
 - `docs/bugs/fixed/branch-selector-lists-only-the-first-100-branches.md`
+- `docs/bugs/fixed/upload-artifact-v4-has-no-results-service.md`
 
 ## Decisions
 
 - `docs/decisions/ADR-0001-actions-runner-strategy.md`
 - `docs/decisions/ADR-0002-artifact-storage-on-disk.md`
 - `docs/decisions/ADR-0003-org-memberships-are-active-on-add.md`
+- `docs/decisions/ADR-0004-actions-results-service-for-artifacts.md`
 
 ## CC-43
 
