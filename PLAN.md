@@ -122,6 +122,7 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/branch-selector-lists-only-the-first-100-branches.md`
 - `docs/bugs/fixed/two-runners-claim-the-same-job.md`
 - `docs/bugs/fixed/upstream-runner-keeps-running-a-cancelled-job.md`
+- `docs/bugs/fixed/runner-stays-busy-after-its-job-is-deleted.md`
 
 ## Decisions
 
