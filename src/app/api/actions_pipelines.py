@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import select
 
+from app.api.actions_runners import normalise_runner_os
 from app.api.deps import DbSession, get_repo_or_404
 from app.config import settings
-from app.models.actions import EnterpriseRunnerRegistrationToken, Runner, RegistrationToken
+from app.models.actions import EnterpriseRunnerRegistrationToken, RegistrationToken, Runner
 from app.services.auth_service import hash_token
-from app.api.actions_runners import normalise_runner_os
 
 router = APIRouter(tags=["actions-pipelines"])
 
