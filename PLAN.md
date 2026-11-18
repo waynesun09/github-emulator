@@ -120,6 +120,9 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/fullsend-installation-token-attribution-and-review-loop.md`
 - `docs/bugs/fixed/cancelled-run-leaves-active-runner-job.md`
 - `docs/bugs/fixed/branch-selector-lists-only-the-first-100-branches.md`
+- `docs/bugs/fixed/indexing-a-push-holds-the-write-lock-through-the-reads.md`
+- `docs/bugs/fixed/workflow-runs-hold-the-write-lock-for-seconds.md`
+- `docs/bugs/fixed/workflow-lookups-resync-the-workflow-table-on-every-request.md`
 
 ## Decisions
 

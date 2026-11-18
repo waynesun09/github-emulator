@@ -2,7 +2,6 @@
 
 import asyncio
 import copy
-import fnmatch
 import itertools
 import logging
 import re
@@ -11,11 +10,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import yaml
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.actions import Workflow, WorkflowRun, WorkflowJob, Secret
+from app.models.actions import Secret, Workflow, WorkflowJob, WorkflowRun
 from app.models.issue import Issue
 from app.models.pull_request import PullRequest
 from app.models.repository import Repository
@@ -43,7 +42,7 @@ class EventEnvelope:
     occurred_at: datetime
 
 
-from app.services.workflow_expressions import (
+from app.services.workflow_expressions import (  # noqa: E402 (after the event types it needs)
     _EXPRESSION_RE,
     _ExpressionError,
     _IfExpressionParser,
@@ -53,6 +52,7 @@ from app.services.workflow_expressions import (
     evaluate_job_if,
     render_expressions,
 )
+
 
 async def detect_workflows(repo_disk_path: str, ref: str = "HEAD") -> list[dict]:
     """Read workflow files from *ref* in a bare repository."""
@@ -93,9 +93,10 @@ async def detect_workflows(repo_disk_path: str, ref: str = "HEAD") -> list[dict]
     return workflows
 
 
-from app.services.webhook_service import schedule_webhooks
-from app.services.cross_repo_pulls import same_repository_head, sync_head_ref
-from app.services.workflow_triggers import evaluate_trigger
+from app.services.cross_repo_pulls import same_repository_head, sync_head_ref  # noqa: E402
+from app.services.webhook_service import schedule_webhooks  # noqa: E402
+from app.services.workflow_triggers import evaluate_trigger  # noqa: E402
+
 
 def dynamic_matrix_expression(job_config: dict) -> str | None:
     """The expression of a dynamic matrix (``matrix: ${{ fromJSON(...) }}``),
@@ -127,7 +128,7 @@ def matrix_combinations(matrix: object) -> list[dict] | None:
     if keys:
         values = [matrix[k] if isinstance(matrix[k], list) else [matrix[k]] for k in keys]
         for combo in itertools.product(*values):
-            entry = dict(zip(keys, combo))
+            entry = dict(zip(keys, combo, strict=True))
             if not any(
                 isinstance(exc, dict) and all(entry.get(k) == v for k, v in exc.items())
                 for exc in exclude
@@ -138,7 +139,7 @@ def matrix_combinations(matrix: object) -> list[dict] | None:
         if not isinstance(inc, dict):
             continue
         merged = False
-        for combo, original in zip(combos, originals):
+        for combo, original in zip(combos, originals, strict=False):
             if all(original[k] == v for k, v in inc.items() if k in original):
                 combo.update(inc)
                 merged = True
@@ -952,10 +953,52 @@ def _topo_sort(jobs: list[dict]) -> list[dict]:
     return result
 
 
+# The default-branch workflows each repository's table was last synced from,
+# by repository id: (disk path, default branch, ``.github/workflows`` tree id).
+# Lookups skip the sync while the key is unchanged. Every sync_workflows_to_db
+# call bumps the repository's generation and drops its entry, so a sync from
+# any other path (a push to another branch adds that branch's workflows) makes
+# the next lookup reconcile against the default branch again. The emulator
+# serves from one process, so an in-process cache sees every sync.
+_synced_workflows: dict[int, tuple] = {}
+_sync_generation: dict[int, int] = {}
+
+
+async def _default_workflows_key(repository: Repository) -> tuple:
+    """What the default branch's workflow inventory depends on."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", "rev-parse", "--verify", "--quiet", "HEAD:.github/workflows",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={"GIT_DIR": repository.disk_path or ""},
+    )
+    stdout, _ = await proc.communicate()
+    tree = stdout.decode().strip() if proc.returncode == 0 else ""
+    return (repository.disk_path, repository.default_branch, tree)
+
+
+async def ensure_workflows_synced(db: AsyncSession, repository: Repository) -> None:
+    """Sync the workflow table from the default branch, and commit, unless
+    neither the default branch nor its workflow files changed since the
+    last sync."""
+    key = await _default_workflows_key(repository)
+    if _synced_workflows.get(repository.id) == key:
+        return
+    generation = _sync_generation.get(repository.id, 0) + 1
+    await sync_workflows_to_db(db, repository, "HEAD")
+    await db.commit()
+    # Another sync while this one ran may have changed the table; leave the
+    # entry unset so the next lookup syncs again.
+    if _sync_generation.get(repository.id, 0) == generation:
+        _synced_workflows[repository.id] = key
+
+
 async def sync_workflows_to_db(
     db: AsyncSession, repository: Repository, ref: str = "HEAD"
 ) -> list[Workflow]:
     """Upsert Workflow rows from on-disk workflow files."""
+    _sync_generation[repository.id] = _sync_generation.get(repository.id, 0) + 1
+    _synced_workflows.pop(repository.id, None)
     detected = await detect_workflows(repository.disk_path, ref)
 
     result = await db.execute(
@@ -1019,9 +1062,10 @@ async def create_workflow_run(
         actor_id=actor.id,
         trigger_payload=payload,
     )
-    db.add(run)
-    await db.flush()
 
+    # Everything read here is read before the run's INSERT: SQLite has one
+    # writer, and from the first write to the commit every other writer
+    # waits, so reads after it stretched that wait.
     # Organization variables the repository can use, its own over them.
     from app.services.org_variables import vars_context
 
@@ -1032,6 +1076,9 @@ async def create_workflow_run(
             select(Secret).where(Secret.repo_id == workflow.repo_id)
         )).scalars().all()
     }
+
+    db.add(run)
+    await db.flush()
     expression_context = {
         "inputs": payload.get("inputs", {}),
         "vars": variables,
@@ -1508,7 +1555,7 @@ async def dispatch_event(
     workflows_yaml = await detect_workflows(repository.disk_path, ref_spec)
     result = await db.execute(select(Workflow).where(Workflow.repo_id == repository.id))
     known = {workflow.path: workflow for workflow in result.scalars().all()}
-    runs = []
+    matched = []
     for workflow_yaml in workflows_yaml:
         path = workflow_yaml.get("_path", "")
         workflow = known.get(path)
@@ -1537,6 +1584,13 @@ async def dispatch_event(
             # None: the secrets are the repository's, read at job promotion.
             secrets=payload.get("secrets"),
         )
+        matched.append((workflow, workflow_yaml))
+
+    # Runs are created only after every match is read (reusable workflows
+    # come from git), so this request holds SQLite's writer lock only for
+    # the runs themselves.
+    runs = []
+    for workflow, workflow_yaml in matched:
         run = await create_workflow_run(
             db,
             workflow,
@@ -1795,8 +1849,8 @@ async def get_ref_sha(repo_disk_path: str, ref: str) -> str:
     return stdout.decode().strip() if proc.returncode == 0 else ""
 
 
-from app.services.workflow_scheduler import (
-    cancel_workflow_run,
+from app.services.workflow_scheduler import (  # noqa: E402 (imports this module back)
+    cancel_workflow_run,  # noqa: F401 (re-exported: callers import it from here)
     check_run_completion,
     dispatch_ready_jobs,
 )

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.actions import WorkflowJob, WorkflowRun
 
+
 def _runs_after_unsuccessful_needs(job: WorkflowJob) -> bool:
     """Whether a job is still evaluated when a job it needs failed, was
     skipped or was cancelled: on GitHub, when its condition names a status
@@ -41,18 +42,18 @@ async def dispatch_ready_jobs(db: AsyncSession, run_id: int) -> list[WorkflowJob
     creation when it declares dependencies, because they may read
     ``needs.<job>.outputs.*``, which only exist once those jobs have finished.
     """
+    from app.services.workflow_expressions import (
+        JOB_NEEDS_KEY,
+        RUN_CANCELLED_KEY,
+        evaluate_job_if,
+        render_expressions,
+    )
     from app.services.workflow_service import (
         build_needs_context,
         build_run_expression_context,
         build_steps_data,
         render_job_labels,
         strategy_context,
-    )
-    from app.services.workflow_expressions import (
-        JOB_NEEDS_KEY,
-        RUN_CANCELLED_KEY,
-        evaluate_job_if,
-        render_expressions,
     )
 
     result = await db.execute(
@@ -178,10 +179,17 @@ async def dispatch_ready_jobs(db: AsyncSession, run_id: int) -> list[WorkflowJob
             # run, not when it was created: a job still waiting on `needs:`
             # has an unevaluated `if:` and may be about to skip. Only a job
             # that is really going to run may supersede another.
-            if job.concurrency_group:
-                await _supersede_for_concurrency(db, job)
             job.status = "queued"
             promoted.append(job)
+
+    # Superseding is one query for all promoted jobs, after the loop: a query
+    # per job autoflushed the jobs changed so far one by one, all inside
+    # SQLite's write lock. The candidates are other runs' jobs, which this
+    # loop does not change, so the query need not see its pending changes.
+    groups = {job.concurrency_group for job in promoted if job.concurrency_group}
+    if groups:
+        with db.no_autoflush:
+            await _supersede_for_concurrency(db, run_id, groups)
 
     if promoted or ready:
         await db.flush()
@@ -211,14 +219,13 @@ async def _expand_dynamic_matrix(
     GitHub ("Matrix vector 'include' does not contain any values"). Returns
     the instances with their expression contexts, or [] when the job failed.
     """
-    from app.services.workflow_expressions import evaluate_expression_value
+    from app.services.workflow_expressions import evaluate_expression_value, render_expressions
     from app.services.workflow_service import (
         _job_concurrency,
         matrix_combinations,
         matrix_job_name,
         strategy_context,
     )
-    from app.services.workflow_expressions import render_expressions
 
     combos = matrix_combinations(
         evaluate_expression_value(pending["dynamic_matrix"], context)
@@ -366,8 +373,8 @@ async def cancel_workflow_run(db: AsyncSession, run_id: int) -> WorkflowRun | No
     return run
 
 
-async def _supersede_for_concurrency(db: AsyncSession, job: WorkflowJob) -> None:
-    """Cancel earlier jobs sharing this job's concurrency group.
+async def _supersede_for_concurrency(db: AsyncSession, run_id: int, groups: set[str]) -> None:
+    """Cancel other runs' jobs in the promoted jobs' concurrency groups.
 
     GitHub's `cancel-in-progress: true` means a newly eligible job supersedes
     an in-flight one in the same group. The group is rendered from the event,
@@ -387,9 +394,8 @@ async def _supersede_for_concurrency(db: AsyncSession, job: WorkflowJob) -> None
     """
     superseded = (await db.execute(
         select(WorkflowJob).where(
-            WorkflowJob.concurrency_group == job.concurrency_group,
-            WorkflowJob.run_id != job.run_id,
-            WorkflowJob.id != job.id,
+            WorkflowJob.concurrency_group.in_(groups),
+            WorkflowJob.run_id != run_id,
             WorkflowJob.status.in_(("queued", "in_progress")),
         )
     )).scalars().all()
