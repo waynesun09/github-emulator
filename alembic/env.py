@@ -13,13 +13,14 @@ config = context.config
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep loggers the app made before migrating (github_emulator.*);
+    # the default disabled them, so their lines never reached the log.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # -- Import models so Alembic sees every table --------------------------------
-from app.database import Base  # noqa: E402
-
 # Import all models to ensure they are registered on Base.metadata.
 import app.models  # noqa: E402, F401
+from app.database import Base  # noqa: E402
 
 target_metadata = Base.metadata
 

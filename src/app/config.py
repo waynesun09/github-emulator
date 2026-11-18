@@ -1,4 +1,5 @@
 import os
+
 from pydantic_settings import BaseSettings
 
 
@@ -11,18 +12,34 @@ class Settings(BaseSettings):
 
     # SQLite database URL
     DATABASE_URL: str = ""
-    SQLITE_BUSY_TIMEOUT_MS: int = 5000
+    # How long a writer waits for SQLite's single writer lock before the
+    # request fails with 503 "database is locked". Under a dozen runners and
+    # parallel clients on a loaded machine, lock waits ran past 5 s (up to
+    # 8.5 s observed); waiting is better than failing a write.
+    SQLITE_BUSY_TIMEOUT_MS: int = 30000
+    # Log a write transaction that holds SQLite's writer lock this long
+    # (app/database_diag.py).
+    SQLITE_SLOW_WRITE_LOG_MS: int = 1000
+    # Log the event loop running a timer this late (app/database_diag.py).
+    EVENT_LOOP_LAG_LOG_MS: int = 500
+    # Pooled connections to a file database. A request holds one from its
+    # first query (authentication) until it ends, and WAL lets readers run
+    # side by side, so the pool, not SQLite, capped concurrency: at
+    # SQLAlchemy's default 5 + 10, a dozen runners polling and posting logs
+    # used all 15 and every other request queued for one.
+    SQLITE_POOL_SIZE: int = 20
+    SQLITE_MAX_OVERFLOW: int = 40
     SQLITE_WRITE_RETRY_ATTEMPTS: int = 2
     SQLITE_WRITE_RETRY_DELAY_MS: int = 100
 
     # Secret key for JWT/session signing
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str = "change-me-in-production"  # noqa: S105 (documented development default)
 
     # Admin credentials (created on first startup)
     SEED_DATA: bool = True
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "admin"
-    DEFAULT_ADMIN_TOKEN: str = "ghp_admin_default_token"
+    ADMIN_PASSWORD: str = "admin"  # noqa: S105 (documented development default)
+    DEFAULT_ADMIN_TOKEN: str = "ghp_admin_default_token"  # noqa: S105 (documented development default)
 
     # Hostname for Caddy TLS / gh CLI integration
     HOSTNAME: str = "ghemu.local"
@@ -59,7 +76,7 @@ class Settings(BaseSettings):
     # Resettable Actions OIDC issuer.  The key is generated in-process by the
     # emulator; this is intentionally not a production identity provider.
     OIDC_ISSUER: str = ""
-    ACTIONS_OIDC_REQUEST_TOKEN: str = "fullsend-action-request"
+    ACTIONS_OIDC_REQUEST_TOKEN: str = "fullsend-action-request"  # noqa: S105 (documented development default)
 
     # Jobs assigned to a runner that stops heartbeating are returned to the
     # queue after this interval so a replacement runner can claim them.
