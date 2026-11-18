@@ -53,7 +53,6 @@ from app.services.action_download_service import (
     resolve_action_sha,
 )
 from app.services.auth_service import hash_token
-from app.services.job_token_service import issue_job_token
 from app.services.workflow_service import check_run_completion, dispatch_ready_jobs
 
 router = APIRouter(tags=["actions-distributed-task"])
@@ -1281,7 +1280,7 @@ async def dt_update_timeline(
     job_id: int, request: Request, db: DbSession,
 ):
     """Runner reports step timeline updates."""
-    runner = await _get_runner_from_token(request, db)
+    await _get_runner_from_token(request, db)
     body = await request.json()
 
     result = await db.execute(
@@ -1569,7 +1568,7 @@ async def dt_resolve_action_download_info(
     here: the runner downloads it with the job token as a Basic credential,
     which GitHub would reject and this service can verify.
     """
-    job = await _get_job_from_job_token(request, db)
+    await _get_job_from_job_token(request, db)
     body = await request.json()
     references = body.get("actions") or body.get("Actions") or []
     base = _runner_reachable_base_url(_request_base(request))
