@@ -9,6 +9,7 @@ from sqlalchemy import select, delete as sa_delete
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
+from app.middleware.error_handler import ValidationError
 from app.models.label import Label
 from app.models.issue import Issue, IssueLabel
 from app.schemas.label import LabelCreate, LabelResponse, LabelUpdate
@@ -55,12 +56,35 @@ async def _read_label_names(request: Request) -> list[str]:
     return fields.get("labels[]", []) + fields.get("labels", [])
 
 
+async def _find_label(db, repository_id: int, name: str, exclude_id: int | None = None) -> Label | None:
+    """The repository's label named ``name``, matched the way GitHub does:
+    case-insensitively, for any letters.
+
+    The comparison is Python's ``casefold``, as SQLite's ``lower()`` folds
+    ASCII letters only. A database written before names were compared
+    case-insensitively can hold both ``bug`` and ``BUG``; the exact spelling
+    wins, then the oldest. ``exclude_id`` leaves one label out (a rename).
+    """
+    labels = (await db.execute(select(Label).where(Label.repo_id == repository_id))).scalars().all()
+    folded = name.casefold()
+    matches = [
+        label for label in labels
+        if label.name.casefold() == folded and label.id != exclude_id
+    ]
+    matches.sort(key=lambda label: (label.name != name, label.id))
+    return matches[0] if matches else None
+
+
+def _label_already_exists() -> ValidationError:
+    """GitHub's 422 for a label name that is taken; clients key on the code."""
+    return ValidationError(
+        errors=[{"resource": "Label", "code": "already_exists", "field": "name"}]
+    )
+
+
 async def _get_or_create_label(db, repository_id: int, name: str) -> Label:
     """Resolve a repository label, creating it like GitHub's issue API does."""
-    result = await db.execute(
-        select(Label).where(Label.repo_id == repository_id, Label.name == name)
-    )
-    label = result.scalar_one_or_none()
+    label = await _find_label(db, repository_id, name)
     if label is not None:
         return label
 
@@ -126,13 +150,8 @@ async def create_label(
     """Create a label."""
     repository = await get_repo_or_404(owner, repo, db)
 
-    existing = await db.execute(
-        select(Label).where(
-            Label.repo_id == repository.id, Label.name == body.name
-        )
-    )
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=422, detail="Label already exists")
+    if await _find_label(db, repository.id, body.name) is not None:
+        raise _label_already_exists()
 
     label = Label(
         repo_id=repository.id,
@@ -147,7 +166,7 @@ async def create_label(
 
 
 @router.get(
-    "/repos/{owner}/{repo}/labels/{name}",
+    "/repos/{owner}/{repo}/labels/{name:path}",
     response_model=LabelResponse,
 )
 async def get_label(
@@ -156,19 +175,14 @@ async def get_label(
     """Get a single label."""
     repository = await get_repo_or_404(owner, repo, db)
 
-    result = await db.execute(
-        select(Label).where(
-            Label.repo_id == repository.id, Label.name == name
-        )
-    )
-    label = result.scalar_one_or_none()
+    label = await _find_label(db, repository.id, name)
     if label is None:
         raise HTTPException(status_code=404, detail="Not Found")
     return LabelResponse.from_db(label, BASE, owner, repo)
 
 
 @router.patch(
-    "/repos/{owner}/{repo}/labels/{name}", response_model=LabelResponse
+    "/repos/{owner}/{repo}/labels/{name:path}", response_model=LabelResponse
 )
 async def update_label(
     owner: str, repo: str, name: str, body: LabelUpdate, user: AuthUser, db: DbSession
@@ -176,16 +190,13 @@ async def update_label(
     """Update a label."""
     repository = await get_repo_or_404(owner, repo, db)
 
-    result = await db.execute(
-        select(Label).where(
-            Label.repo_id == repository.id, Label.name == name
-        )
-    )
-    label = result.scalar_one_or_none()
+    label = await _find_label(db, repository.id, name)
     if label is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
     if body.new_name is not None:
+        if await _find_label(db, repository.id, body.new_name, exclude_id=label.id) is not None:
+            raise _label_already_exists()
         label.name = body.new_name
     if body.color is not None:
         label.color = body.color.lstrip("#")
@@ -197,19 +208,14 @@ async def update_label(
     return LabelResponse.from_db(label, BASE, owner, repo)
 
 
-@router.delete("/repos/{owner}/{repo}/labels/{name}", status_code=204)
+@router.delete("/repos/{owner}/{repo}/labels/{name:path}", status_code=204)
 async def delete_label(
     owner: str, repo: str, name: str, user: AuthUser, db: DbSession
 ):
     """Delete a label."""
     repository = await get_repo_or_404(owner, repo, db)
 
-    result = await db.execute(
-        select(Label).where(
-            Label.repo_id == repository.id, Label.name == name
-        )
-    )
-    label = result.scalar_one_or_none()
+    label = await _find_label(db, repository.id, name)
     if label is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
@@ -335,10 +341,10 @@ async def set_issue_labels(
     label_names = await _read_label_names(request)
     labels_by_name: dict[str, Label] = {}
     for lname in dict.fromkeys(label_names):
-        if not isinstance(lname, str) or not lname:
+        if not isinstance(lname, str) or not lname or lname.casefold() in labels_by_name:
             continue
         label = labels_by_name.setdefault(
-            lname, await _get_or_create_label(db, repository.id, lname)
+            lname.casefold(), await _get_or_create_label(db, repository.id, lname)
         )
         db.add(IssueLabel(issue_id=issue.id, label_id=label.id))
 
@@ -369,7 +375,7 @@ async def set_issue_labels(
 
 
 @router.delete(
-    "/repos/{owner}/{repo}/issues/{issue_number}/labels/{name}",
+    "/repos/{owner}/{repo}/issues/{issue_number}/labels/{name:path}",
     status_code=200,
     response_model=list[LabelResponse],
 )
@@ -392,12 +398,7 @@ async def remove_issue_label(
     if issue is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    lbl_result = await db.execute(
-        select(Label).where(
-            Label.repo_id == repository.id, Label.name == name
-        )
-    )
-    label = lbl_result.scalar_one_or_none()
+    label = await _find_label(db, repository.id, name)
     if label is None:
         raise HTTPException(status_code=404, detail="Label not found")
 
