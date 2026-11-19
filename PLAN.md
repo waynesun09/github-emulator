@@ -171,6 +171,8 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/update-of-deleted-row-answers-500.md`
 - `docs/bugs/fixed/comment-on-deleted-issue-500.md`
 - `docs/bugs/fixed/failed-post-push-step-drops-the-push-event.md`
+- `docs/bugs/fixed/github-context-identity-values-are-empty.md`
+- `docs/bugs/fixed/rendered-github-context-differs-from-github.md`
 
 ## Decisions
 

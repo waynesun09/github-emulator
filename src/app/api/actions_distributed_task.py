@@ -54,7 +54,7 @@ from app.services.action_download_service import (
 )
 from app.services.auth_service import hash_token
 from app.services.job_token_service import validate_job_token
-from app.services.workflow_service import check_run_completion, dispatch_ready_jobs
+from app.services.workflow_service import check_run_completion, dispatch_ready_jobs, static_github_facts
 
 router = APIRouter(tags=["actions-distributed-task"])
 # Under github_emulator, which app.main sends to the server log: job
@@ -643,6 +643,9 @@ def _job_request_message(
             # documents notice as a workflow command beside warning and
             # error, rendered as `##[notice]` in the job log.
             "DistributedTask.EnhancedAnnotations": _variable("true"),
+            # runner.environment and RUNNER_ENVIRONMENT. The jobs stand in for
+            # GitHub-hosted ones, which is what workflows here are written for.
+            "system.runnerEnvironment": _variable("github-hosted"),
         },
         "contextData": {
             # The runner expands an expression only when every context the
@@ -663,6 +666,8 @@ def _job_request_message(
             }),
             "matrix": None,
             "github": _context_dictionary({
+                "actor": run.actor.login if run and run.actor else "",
+                "actor_id": str(run.actor_id) if run and run.actor_id else "",
                 "api_url": f"{runner_base_url}/api/v3",
                 "base_ref": "",
                 "event_name": run.event if run else "workflow_dispatch",
@@ -683,8 +688,22 @@ def _job_request_message(
                 "server_url": runner_base_url,
                 "sha": sha,
                 "token": access_token,
+                "triggering_actor": run.actor.login if run and run.actor else "",
                 "workflow": workflow_name,
+                "workflow_ref": (
+                    f"{repo_full_name}/{run.workflow.path}@{ref}"
+                    if run and run.workflow and run.workflow.path else ""
+                ),
                 "workspace": "",
+                # ref_name, ref_type, ref_protected, workflow_sha and the
+                # rest: the runner exports the first four as GITHUB_* env.
+                **static_github_facts(
+                    ref, sha, repo_full_name, repo.private if repo else None,
+                    ref.startswith("refs/heads/") and any(
+                        branch.name == ref[len("refs/heads/"):] and branch.protected
+                        for branch in (repo.branches if repo else [])
+                    ),
+                ),
             }),
         },
         "resources": {
