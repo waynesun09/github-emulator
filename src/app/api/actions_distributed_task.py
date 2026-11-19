@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.actions_dispatch import _claim_queued_job
@@ -926,7 +927,11 @@ async def _claim_next_job(
 
     repo = None
     if run:
-        repo_result = await db.execute(select(Repository).where(Repository.id == run.repo_id))
+        # The job message reads repo.branches (github.ref_protected, #35);
+        # since #33 branches load only when asked, so load them here.
+        repo_result = await db.execute(
+            select(Repository).where(Repository.id == run.repo_id).options(selectinload(Repository.branches))
+        )
         repo = repo_result.scalar_one_or_none()
 
     return _job_request_message(job, run, repo, base_url)
