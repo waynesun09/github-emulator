@@ -5,19 +5,19 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import func as sa_func
+from sqlalchemy import select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.api.labels import _get_or_create_label
 from app.api.pagination import pagination_links
 from app.config import settings
-from app.models.issue import Issue, IssueLabel, IssueAssignee
+from app.models.issue import Issue, IssueAssignee, IssueLabel
 from app.models.label import Label
-from app.models.repository import Repository
 from app.models.user import User
-from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
-from app.schemas.label import LabelResponse
 from app.schemas.issue import IssueResponse
+from app.schemas.label import LabelResponse
+from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
 
 router = APIRouter(tags=["issues"])
 
@@ -169,7 +169,7 @@ async def list_issues(
 
     # Filter by labels (comma-separated)
     if labels:
-        label_names = [l.strip() for l in labels.split(",")]
+        label_names = [name.strip() for name in labels.split(",")]
         for label_name in label_names:
             label_subq = (
                 select(IssueLabel.issue_id)
@@ -244,9 +244,9 @@ async def create_issue(
     if not title:
         raise HTTPException(status_code=422, detail="title is required")
 
-    number = repository.next_issue_number
-    repository.next_issue_number = number + 1
-    repository.open_issues_count += 1
+    from app.services.issue_number import allocate_issue_number
+
+    number = await allocate_issue_number(db, repository)
 
     issue = Issue(
         repo_id=repository.id,

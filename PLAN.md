@@ -154,6 +154,18 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/installation-token-narrowing-by-repository.md`
 - `docs/bugs/fixed/actions-oidc-claims-and-discovery-differ-from-github.md`
 - `docs/bugs/fixed/upload-artifact-v4-has-no-results-service.md`
+- `docs/bugs/fixed/indexing-a-push-holds-the-write-lock-through-the-reads.md`
+- `docs/bugs/fixed/workflow-runs-hold-the-write-lock-for-seconds.md`
+- `docs/bugs/fixed/workflow-lookups-resync-the-workflow-table-on-every-request.md`
+- `docs/bugs/fixed/connection-pool-caps-concurrent-runners.md`
+- `docs/bugs/fixed/writes-fail-after-a-5s-lock-wait.md`
+- `docs/bugs/fixed/api-commit-answers-503-after-the-branch-moved.md`
+- `docs/bugs/fixed/concurrent-repository-create-returns-500.md`
+- `docs/bugs/fixed/concurrent-issues-get-the-same-number.md`
+- `docs/bugs/fixed/concurrent-label-create-returns-500.md`
+- `docs/bugs/fixed/update-of-deleted-row-answers-500.md`
+- `docs/bugs/fixed/comment-on-deleted-issue-500.md`
+- `docs/bugs/fixed/failed-post-push-step-drops-the-push-event.md`
 
 ## Decisions
 
