@@ -122,6 +122,13 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/cancelled-run-leaves-active-runner-job.md`
 - `docs/bugs/fixed/branch-selector-lists-only-the-first-100-branches.md`
 - `docs/bugs/fixed/python-runner-skips-tls-verification.md`
+- `docs/bugs/fixed/two-runners-claim-the-same-job.md`
+- `docs/bugs/fixed/upstream-runner-keeps-running-a-cancelled-job.md`
+- `docs/bugs/fixed/runner-stays-busy-after-its-job-is-deleted.md`
+- `docs/bugs/fixed/cancellation-never-reaches-a-runner-that-moved-on.md`
+- `docs/bugs/fixed/job-handed-to-an-abandoned-runner-poll.md`
+- `docs/bugs/fixed/runner-self-delete-leaves-jobs-pointing-at-it.md`
+- `docs/bugs/fixed/app-logs-silenced-after-the-startup-migration.md`
 
 ## Decisions
 
