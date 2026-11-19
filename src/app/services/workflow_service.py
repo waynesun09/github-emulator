@@ -1409,6 +1409,10 @@ async def create_workflow_run(
         )).scalars().all()
     }
 
+    # Read before the run's INSERT: a read after it holds SQLite's writer
+    # lock (#33). The run is not added yet, so nothing flushes here.
+    identity = await github_identity_context(db, run)
+
     db.add(run)
     await db.flush()
     expression_context = {
@@ -1429,7 +1433,7 @@ async def create_workflow_run(
             "run_number": run.run_number,
             "sha": head_sha,
             "server_url": settings.BASE_URL,
-            **await github_identity_context(db, run),
+            **identity,
         },
     }
 
