@@ -176,6 +176,12 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/raw-githubusercontent-requests-are-not-served.md`
 - `docs/bugs/fixed/contents-reads-run-several-git-processes.md`
 - `docs/bugs/fixed/contents-ignore-the-raw-media-type-and-the-1-mib-limit.md`
+- `docs/bugs/fixed/container-and-services-jobs-run-on-the-host.md`
+- `docs/bugs/fixed/unresolved-reusable-workflow-call-passes.md`
+- `docs/bugs/fixed/skipped-reusable-workflow-caller-lists-the-called-jobs.md`
+- `docs/bugs/fixed/job-needing-a-reusable-workflow-caller-waits-forever.md`
+- `docs/bugs/fixed/actions-in-emulator-repositories-are-fetched-upstream.md`
+- `docs/bugs/fixed/jobs-list-shows-jobs-waiting-on-needs.md`
 
 ## Decisions
 
