@@ -173,6 +173,9 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/failed-post-push-step-drops-the-push-event.md`
 - `docs/bugs/fixed/github-context-identity-values-are-empty.md`
 - `docs/bugs/fixed/rendered-github-context-differs-from-github.md`
+- `docs/bugs/fixed/raw-githubusercontent-requests-are-not-served.md`
+- `docs/bugs/fixed/contents-reads-run-several-git-processes.md`
+- `docs/bugs/fixed/contents-ignore-the-raw-media-type-and-the-1-mib-limit.md`
 
 ## Decisions
 
