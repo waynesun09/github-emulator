@@ -118,8 +118,9 @@ async def test_an_installation_token_revokes_itself(
     assert resp.status_code == 204, resp.text
     assert resp.content == b""
 
-    # The revoked token no longer authenticates.
-    assert (await client.get(f"{API}/installation/repositories", headers=headers)).status_code == 403
+    # The revoked token no longer authenticates: 401 "Bad credentials", as
+    # /installation/repositories answers an unknown token since #35.
+    assert (await client.get(f"{API}/installation/repositories", headers=headers)).status_code == 401
     assert (await client.get(f"{API}/user", headers=headers)).status_code == 401
 
 
