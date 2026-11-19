@@ -133,6 +133,8 @@ Actions visibility and runner evaluation.
 - `docs/bugs/fixed/runner-self-delete-leaves-jobs-pointing-at-it.md`
 - `docs/bugs/fixed/app-logs-silenced-after-the-startup-migration.md`
 - `docs/bugs/fixed/runners-registering-together-lose-their-tokens.md`
+- `docs/bugs/fixed/installation-token-narrowing-by-repository.md`
+- `docs/bugs/fixed/actions-oidc-claims-and-discovery-differ-from-github.md`
 
 ## Decisions
 
