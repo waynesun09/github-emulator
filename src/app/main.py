@@ -7,6 +7,9 @@ Git Smart HTTP protocol handler.
 
 import logging
 import os
+import time
+
+_T0 = time.monotonic()
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -41,9 +44,14 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.DATA_DIR, exist_ok=True)
     os.makedirs(os.path.join(settings.DATA_DIR, "repos"), exist_ok=True)
 
+    logger.info("startup-timing: lifespan entered %.2fs after import start", time.monotonic() - _T0)
+    t = time.monotonic()
     await init_db()
+    logger.info("startup-timing: init_db (migrations) %.2fs", time.monotonic() - t)
+    t = time.monotonic()
     if settings.SEED_DATA:
         await _ensure_admin_user()
+    logger.info("startup-timing: admin seed %.2fs", time.monotonic() - t)
 
     logger.info("GitHub Emulator started at %s", settings.BASE_URL)
     memory_watch = None
